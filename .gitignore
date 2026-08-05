@@ -1,0 +1,35 @@
+# Delphi compiled files
+*.dcu
+*.exe
+*.bpl
+*.dcp
+*.o
+*.a
+*.identcache
+*.local
+*.stat
+Win32/
+Win64/
+Linux64/
+__history/
+__recovery/
+
+# Test output
+Tests/dunitx-results.xml
+Tests/testoutput.txt
+
+# Logs
+*.log
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Claude local settings
+.claude/settings.local.json
+
+# Tool render output
+Tools/Gallery/*.png
+Tools/FmxCheck/out/
+Tools/FmxCheck/*.png
+/*.png

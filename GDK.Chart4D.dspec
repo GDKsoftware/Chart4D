@@ -1,0 +1,38 @@
+# DPM package spec file
+min dpm client version: 1.0.0
+metadata:
+  id: GDK.Chart4D
+  version: 1.0.0
+  description: 'Publication-ready editorial-style charts for Delphi, VCL and FireMonkey.'
+  authors:
+    - GDK Software
+  projectUrl: https://github.com/GDKsoftware/Chart4D
+  repositoryUrl: https://github.com/GDKsoftware/Chart4D
+  repositoryCommit: '#HASH#'
+  license: MIT
+  copyright: GDK Software
+  tags:
+    - charts
+    - graphics
+    - dataviz
+    - vcl
+    - fmx
+  readme: README.md
+variables:
+  packagesource: RAD Studio $compilerNoPrefix$
+targetPlatforms:
+  - compiler from: delphi13.0
+    compiler to: delphi13.0
+    platforms:
+      - win32
+      - win64
+templates:
+  - name: default
+    source:
+      - src: ./Source/**.pas
+      - src: ./packages/$packageSource$/*.dproj
+      - src: ./packages/$packageSource$/*.dpk
+    build:
+      - project: ./packages/$packageSource$/Chart4D_R.dproj
+      - project: ./packages/$packageSource$/Chart4D_VCL_R.dproj
+      - project: ./packages/$packageSource$/Chart4D_FMX_R.dproj
