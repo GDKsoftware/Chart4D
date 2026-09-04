@@ -2,16 +2,37 @@
 setlocal enabledelayedexpansion
 
 rem Where RAD Studio is installed. Only needed to locate rsvars.bat, which then exports
-rem BDS, BDSCOMMONDIR and BDSUSERDIR for everything this script calls. Set BDS yourself
-rem to build against another installation:  set BDS=D:\Embarcadero\Studio\37.0
-if not defined BDS set "BDS=c:\program files (x86)\embarcadero\studio\37.0"
+rem BDS, BDSCOMMONDIR and BDSUSERDIR for everything this script calls.
+if not defined STUDIO_ROOT set "STUDIO_ROOT=C:\Program Files (x86)\Embarcadero\Studio"
+
+rem Newest supported Delphi first: 37.0 is Delphi 13, 23.0 is Delphi 12 Athens.
+rem Set CHART4D_STUDIO to a version number to force one of them, or BDS to point at
+rem an installation directly:  set BDS=D:\Embarcadero\Studio\23.0
+if not defined BDS (
+  if defined CHART4D_STUDIO (
+    set "BDS=%STUDIO_ROOT%\%CHART4D_STUDIO%"
+  ) else (
+    for %%V in (37.0 23.0) do (
+      if not defined BDS if exist "%STUDIO_ROOT%\%%V\bin\rsvars.bat" set "BDS=%STUDIO_ROOT%\%%V"
+    )
+  )
+)
+if not defined BDS (
+  echo No supported Delphi found under "%STUDIO_ROOT%".
+  echo Looked for 37.0 ^(Delphi 13^) and 23.0 ^(Delphi 12 Athens^).
+  echo Set CHART4D_STUDIO to a version number, or STUDIO_ROOT to another install root.
+  exit /b 1
+)
+
+rem The package sources live in a folder per product version.
+set "PACKAGEDIR=packages\RAD Studio 13.0"
+if "%BDS:~-4%"=="23.0" set "PACKAGEDIR=packages\RAD Studio 12.0"
 
 set RSVARS="%BDS%\bin\rsvars.bat"
-set PACKAGEDIR=packages\RAD Studio 13.0
 set CONFIG=Release
 
 echo ===============================================
-echo Chart4D build
+echo Chart4D build (%BDS%)
 echo ===============================================
 
 if not exist %RSVARS% (

@@ -12,8 +12,8 @@ Zero dependencies, RTL only in the core, in the style of the GDK -4D library fam
 
 <!-- badges -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-![Version 1.0.0](https://img.shields.io/badge/version-1.0.0-blue.svg)
-[![Delphi 13](https://img.shields.io/badge/Delphi-13-e62329.svg)](https://www.embarcadero.com/products/delphi)
+[![Latest version](https://img.shields.io/github/v/tag/GDKsoftware/Chart4D?label=version&color=blue)](https://github.com/GDKsoftware/Chart4D/tags)
+[![Delphi 12+](https://img.shields.io/badge/Delphi-12%2B-e62329.svg)](https://www.embarcadero.com/products/delphi)
 [![Tests passing](https://img.shields.io/badge/tests-passing-1f6feb.svg)](Tests)
 ![VCL and FMX](https://img.shields.io/badge/frameworks-VCL%20%7C%20FMX-1f6feb.svg)
 ![Zero dependencies](https://img.shields.io/badge/dependencies-none-1f6feb.svg)
@@ -22,6 +22,22 @@ Zero dependencies, RTL only in the core, in the style of the GDK -4D library fam
   <img src="docs/images/multi-line.png" alt="Life expectancy in three countries, as a multi-line chart" width="49%">
   <img src="docs/images/dot-plot.png" alt="Life expectancy in ten countries, as a dot plot" width="49%">
 </p>
+
+## Why Chart4D
+
+Most charting components give you every option and leave the design to you. The result is
+usually a chart that looks like a spreadsheet: a boxed plot area, a heavy grid in both
+directions, a legend in a corner, values you have to look up on an axis.
+
+Chart4D starts from the other end. The default output is the chart a newspaper graphics desk
+would publish: title and subtitle top left, a light horizontal grid only, series labelled at the
+line end instead of in a legend, and a footer with the source. You supply the data and the
+words; the layout, the label placement and the colours are already decided, and every one of
+those decisions can be overridden when you disagree.
+
+The core is plain Object Pascal on the RTL and does not know about VCL or FMX. The two controls
+are thin adapters over one shared renderer, so a chart renders pixel-for-pixel the same on both
+frameworks and exports to PNG the same way. Delphi 12 Athens and Delphi 13, MIT licensed.
 
 ## Quick start
 
@@ -217,8 +233,9 @@ ChartLightGrey    = $FFDDDDDD;
 
 ## Installation
 
-Open the runtime packages under `packages\RAD Studio 13.0\` and build `Chart4D_R` for the
-core, then `Chart4D_VCL_R` or `Chart4D_FMX_R` for the framework you use.
+Open the runtime packages under `packages\RAD Studio 13.0\` or `packages\RAD Studio 12.0\`,
+whichever matches your IDE, and build `Chart4D_R` for the core, then `Chart4D_VCL_R` or
+`Chart4D_FMX_R` for the framework you use.
 
 Or add `Source\` plus `Source\VCL\` or `Source\FMX\` to your project search path. Controls are
 created at runtime; there is no design-time registration yet.
@@ -231,7 +248,8 @@ explanation and the code that produces it beside the chart. They share
 always come from the same source.
 
 Build them with `Build.bat` in the repository root, which also builds the packages and runs
-the tests.
+the tests. The script picks the newest installed Delphi; set `CHART4D_STUDIO` to `23.0` or
+`37.0` to force Delphi 12 or Delphi 13.
 
 All demo data is published World Bank World Development Indicators data, except the
 electricity mix, which is Ember data via Our World in Data.
@@ -255,8 +273,22 @@ move through the hit test to the repaint is covered, not just the geometry behin
 
 ## Status
 
-Version 1.0.0. See `SPEC.md` for the design contract.
+Version 1.0.0. See `SPEC.md` for the design contract and [CONTRIBUTING.md](CONTRIBUTING.md)
+for how to build, test and submit a change.
 
 ## License
 
-MIT, Copyright (c) 2026 GDK Software
+Chart4D is released under the [MIT License](LICENSE).
+
+Copyright (c) 2026 GDK Software
+
+## Commercial Support
+
+Chart4D is MIT licensed, so it is free to use. For companies we offer a support and
+maintenance contract, including sponsored development of the features you need. Get in touch
+at [gdksoftware.com/contact-us](https://gdksoftware.com/contact-us), or open an issue.
+
+## About GDK Software
+
+Chart4D is developed by [GDK Software](https://gdksoftware.com), a software company building
+Delphi developer tools, MCP integrations, and enterprise Delphi applications.

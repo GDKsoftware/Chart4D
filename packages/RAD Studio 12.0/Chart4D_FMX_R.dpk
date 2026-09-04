@@ -1,0 +1,50 @@
+{*******************************************************}
+{                                                       }
+{       Chart4D Library - Editorial data charts         }
+{                                                       }
+{          Copyright(c) 2026 GDK Software               }
+{                All rights reserved                    }
+{                                                       }
+{             Licensed under MIT License                }
+{                                                       }
+{*******************************************************}
+package Chart4D_FMX_R;
+
+{$R *.res}
+{$IFDEF IMPLICITBUILDING This IFDEF should not be used by users}
+{$ALIGN 8}
+{$ASSERTIONS ON}
+{$BOOLEVAL OFF}
+{$DEBUGINFO ON}
+{$EXTENDEDSYNTAX ON}
+{$IMPORTEDDATA ON}
+{$IOCHECKS ON}
+{$LOCALSYMBOLS ON}
+{$LONGSTRINGS ON}
+{$OPENSTRINGS ON}
+{$OPTIMIZATION OFF}
+{$OVERFLOWCHECKS OFF}
+{$RANGECHECKS OFF}
+{$REFERENCEINFO ON}
+{$SAFEDIVIDE OFF}
+{$STACKFRAMES ON}
+{$TYPEDADDRESS OFF}
+{$VARSTRINGCHECKS ON}
+{$WRITEABLECONST OFF}
+{$MINENUMSIZE 1}
+{$IMAGEBASE $400000}
+{$DEFINE RELEASE}
+{$ENDIF IMPLICITBUILDING}
+{$LIBSUFFIX AUTO}
+{$RUNONLY}
+{$IMPLICITBUILD OFF}
+
+requires
+  rtl,
+  fmx,
+  Chart4D_R;
+
+contains
+  Chart4D.FMX in '..\..\Source\FMX\Chart4D.FMX.pas';
+
+end.
