@@ -297,9 +297,9 @@ end;
 /// Renders every example from the shared demo catalogue through the real FMX adapter and
 /// asserts that each one puts palette-coloured ink on the bitmap and nothing on its
 /// outermost pixels. A chart that compiles and silently draws nothing is the failure mode
-/// this adapter already had once. Drawing the same catalogue the demos and the VCL gallery
-/// present means this coverage grows or shrinks with the catalogue itself, rather than a
-/// second, hand-kept sample set that can drift away from what a user actually sees.
+/// this adapter already had once. Drawing the same catalogue the demos present means this
+/// coverage grows or shrinks with the catalogue itself, rather than a second, hand-kept
+/// sample set that can drift away from what a user actually sees.
 /// </summary>
 procedure VerifyEveryChartKindDraws(const OutputDir: string);
 const

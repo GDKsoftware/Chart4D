@@ -56,8 +56,7 @@ Chart4D/
 ├── Tools/
 │   ├── CoreCheck/               Console .dpr that uses every core unit (compile check)
 │   ├── VclCheck/                Renders and exports through the VCL adapter, plus tooltip
-│   ├── FmxCheck/                Same for FMX, plus series-pixel checks on the paint path
-│   └── Gallery/                 Renders every chart kind to PNG for visual inspection
+│   └── FmxCheck/                Same for FMX, plus series-pixel checks on the paint path
 ├── assets/                      Chart4D.ico and the mark, plus the .rc/.res that embeds it
 ├── docs/images/                 Rendered charts used by README.md
 ├── Build.bat                    Builds packages, tests, demos

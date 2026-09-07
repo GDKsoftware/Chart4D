@@ -4,23 +4,23 @@
 
 Publication-ready editorial charts for Delphi, VCL and FireMonkey.
 
-Chart4D draws charts the way a newsroom publishes them: a strong left-aligned title, a light
+Chart4D draws charts the way a newsroom publishes them: a bold left-aligned title, a light
 horizontal grid, no chart junk, direct labelling, and a footer with the source. One consistent
 style out of the box, every part of it overridable.
 
-Zero dependencies, RTL only in the core, in the style of the GDK -4D library family.
+Zero dependencies, RTL only in the core, in the style of the GDK 4D library family.
 
 <!-- badges -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Latest version](https://img.shields.io/github/v/tag/GDKsoftware/Chart4D?label=version&color=blue)](https://github.com/GDKsoftware/Chart4D/tags)
 [![Delphi 12+](https://img.shields.io/badge/Delphi-12%2B-e62329.svg)](https://www.embarcadero.com/products/delphi)
-[![Tests passing](https://img.shields.io/badge/tests-passing-1f6feb.svg)](Tests)
+[![Tests: DUnitX](https://img.shields.io/badge/tests-DUnitX-1f6feb.svg)](Tests)
 ![VCL and FMX](https://img.shields.io/badge/frameworks-VCL%20%7C%20FMX-1f6feb.svg)
 ![Zero dependencies](https://img.shields.io/badge/dependencies-none-1f6feb.svg)
 
 <p align="center">
   <img src="docs/images/multi-line.png" alt="Life expectancy in three countries, as a multi-line chart" width="49%">
-  <img src="docs/images/dot-plot.png" alt="Life expectancy in ten countries, as a dot plot" width="49%">
+  <img src="docs/images/grouped-bar.png" alt="CO2 emissions per person in ten countries in 1990 and 2020, as a grouped bar chart" width="49%">
 </p>
 
 ## Why Chart4D
@@ -29,15 +29,12 @@ Most charting components give you every option and leave the design to you. The 
 usually a chart that looks like a spreadsheet: a boxed plot area, a heavy grid in both
 directions, a legend in a corner, values you have to look up on an axis.
 
-Chart4D starts from the other end. The default output is the chart a newspaper graphics desk
-would publish: title and subtitle top left, a light horizontal grid only, series labelled at the
-line end instead of in a legend, and a footer with the source. You supply the data and the
-words; the layout, the label placement and the colours are already decided, and every one of
-those decisions can be overridden when you disagree.
+Chart4D starts from the other end. You supply the data and the words. The layout, the label
+placement and the colours are already decided. Override any of them when you disagree.
 
 The core is plain Object Pascal on the RTL and does not know about VCL or FMX. The two controls
 are thin adapters over one shared renderer, so a chart renders pixel-for-pixel the same on both
-frameworks and exports to PNG the same way. Delphi 12 Athens and Delphi 13, MIT licensed.
+frameworks and exports to PNG the same way.
 
 ## Quick start
 
@@ -63,14 +60,14 @@ Chart.SaveToPng('online.png');
 ```
 
 The FireMonkey control has the same API. Use `Chart4D.FMX` instead of `Chart4D.VCL` and
-nothing else changes, because both are thin adapters over one shared renderer.
+nothing else changes.
 
 ## Chart kinds
 
 | Kind | What it is for |
 |---|---|
 | `Line` | A measure over time, one or more series |
-| `Area` | A quantity accumulating, rather than a level being measured |
+| `Area` | A total that accumulates, rather than a level you measure |
 | `Bar` | Ranking and comparison, for values with a meaningful zero |
 | `GroupedBar` | Two or three measures per category, side by side |
 | `StackedBar` | Parts of a whole, absolute or normalised to 100% |
@@ -78,7 +75,7 @@ nothing else changes, because both are thin adapters over one shared renderer.
 | `DotPlot` | Comparison where zero is not informative, so bars would mislead |
 | `Dumbbell` | Change between two moments, one row per category |
 | `Range` | The span between a low and a high value |
-| `Arrow` | The same change, with its direction as the subject |
+| `Arrow` | Change between two moments, drawn as a direction rather than two points |
 | `Scatter` | Two continuous measures against each other, with optional bubble sizing |
 | `Pie` | Parts of one whole, for a handful of segments |
 | `Donut` | A pie with room for a total in the middle |
@@ -145,8 +142,8 @@ XAxis.DateMode := TAxisDateMode.Auto;            // days, months, quarters or ye
 Plot.XAxis := XAxis;
 ```
 
-Numbers use the invariant convention unless `LocaleName` says otherwise, so output stays
-reproducible in tests until you decide it should follow a reader instead.
+Numbers use the invariant convention unless you set `LocaleName`, so test output is
+reproducible.
 
 For a horizontal chart the value axis is still `YAxis`. The orientation swaps where the axes
 are drawn, not what they mean.
@@ -171,7 +168,7 @@ Band.Color := TAlphaColor($3013A0C1);
 ## Interaction
 
 Both controls hit-test the chart on mouse move, highlight the nearest data point and draw a
-tooltip. It is on by default.
+tooltip. Tooltips are on by default.
 
 ```pascal
 Chart.ShowTooltips := True;
@@ -209,7 +206,7 @@ The logo is scaled to fit the footer height and aligned right. Both demos set it
 
 `TChartStyle.Default` holds the editorial style: Helvetica, or Arial on Windows, a 28 pixel
 bold title, a 22 pixel subtitle, 18 pixel legend and axis text in `#222222`, gridlines on the
-value axis only in `#cbcbcb`, and no axis titles, ticks or axis lines. Sizes are pixels at the
+value axis only in `#CBCBCB`, and no axis titles, ticks or axis lines. Sizes are pixels at the
 640x450 reference size and scale with `ScaleFactor`.
 
 ```pascal
@@ -223,12 +220,12 @@ Plot.Style := Style;
 The palette:
 
 ```pascal
-ChartBlue         = $FF1380A1;
-ChartOrange       = $FFFAAB18;
-ChartDarkRed      = $FF990000;
-ChartGreen        = $FF588300;
-ChartBaselineGrey = $FF333333;
-ChartLightGrey    = $FFDDDDDD;
+ChartBlue         = TAlphaColor($FF1380A1);
+ChartOrange       = TAlphaColor($FFFAAB18);
+ChartDarkRed      = TAlphaColor($FF990000);
+ChartGreen        = TAlphaColor($FF588300);
+ChartBaselineGrey = TAlphaColor($FF333333);
+ChartLightGrey    = TAlphaColor($FFDDDDDD);
 ```
 
 ## Installation
@@ -247,34 +244,33 @@ explanation and the code that produces it beside the chart. They share
 `Examples\Common\Chart4DDemo.Catalog.pas`, so the fragment on screen and the chart next to it
 always come from the same source.
 
-Build them with `Build.bat` in the repository root, which also builds the packages and runs
-the tests. The script picks the newest installed Delphi; set `CHART4D_STUDIO` to `23.0` or
-`37.0` to force Delphi 12 or Delphi 13.
+Build them with `Build.bat` in the repository root. The script picks the newest installed
+Delphi; set `CHART4D_STUDIO` to `23.0` or `37.0` to force Delphi 12 or Delphi 13.
 
-All demo data is published World Bank World Development Indicators data, except the
-electricity mix, which is Ember data via Our World in Data.
+All demo data is published World Bank World Development Indicators data. Two exceptions: the
+electricity mix is Ember data via Our World in Data, and the temperature anomaly is HadCRUT5
+from the Met Office Hadley Centre.
 
 ## Verification
 
 `Build.bat` builds the three packages, runs the DUnitX suite and builds both demos. Everything
 compiles with zero warnings and zero hints.
 
-Four console tools under `Tools\` go further:
+Three console tools under `Tools\` go further:
 
 | Tool | What it checks |
 |---|---|
 | `CoreCheck` | Every core unit compiles and every scenario renders |
 | `VclCheck` | The GDI+ adapter renders, exports and reports hover |
 | `FmxCheck` | The same for FMX, plus every chart kind drawing real pixels |
-| `Gallery` | Renders the whole catalogue to PNG for visual inspection |
 
 `FmxCheck` and `VclCheck` drive the control's own mouse handling, so the chain from a mouse
 move through the hit test to the repaint is covered, not just the geometry behind it.
 
 ## Status
 
-Version 1.0.0. See `SPEC.md` for the design contract and [CONTRIBUTING.md](CONTRIBUTING.md)
-for how to build, test and submit a change.
+Version 1.0.0. See [SPEC.md](SPEC.md) for the design contract and
+[CONTRIBUTING.md](CONTRIBUTING.md) for how to build, test and submit a change.
 
 ## License
 
@@ -284,9 +280,9 @@ Copyright (c) 2026 GDK Software
 
 ## Commercial Support
 
-Chart4D is MIT licensed, so it is free to use. For companies we offer a support and
-maintenance contract, including sponsored development of the features you need. Get in touch
-at [gdksoftware.com/contact-us](https://gdksoftware.com/contact-us), or open an issue.
+For companies we offer a support and maintenance contract, including sponsored development of
+the features you need. Get in touch at
+[gdksoftware.com/contact-us](https://gdksoftware.com/contact-us), or open an issue.
 
 ## About GDK Software
 

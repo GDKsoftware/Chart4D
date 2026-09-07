@@ -29,7 +29,6 @@ Thumbs.db
 .claude/settings.local.json
 
 # Tool render output
-Tools/Gallery/*.png
 Tools/FmxCheck/out/
 Tools/FmxCheck/*.png
 /*.png

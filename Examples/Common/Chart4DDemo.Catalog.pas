@@ -11,11 +11,11 @@
 unit Chart4DDemo.Catalog;
 
 /// <summary>
-/// The shared catalogue behind both demos and the gallery tool: every example, with the
-/// code that produces it and an explanation of when to reach for it. The VCL and the FMX
-/// demo differ only in the controls they use to show a chart, so keeping the examples
-/// here means a change lands everywhere at once, and the code fragment on screen cannot
-/// drift away from the chart next to it, because the same record carries both.
+/// The shared catalogue behind both demos: every example, with the code that produces it
+/// and an explanation of when to reach for it. The VCL and the FMX demo differ only in the
+/// controls they use to show a chart, so keeping the examples here means a change lands
+/// everywhere at once, and the code fragment on screen cannot drift away from the chart
+/// next to it, because the same record carries both.
 ///
 /// Every <c>Code</c> fragment is complete: it declares the data it uses, so it can be
 /// copied into a project and compiled as it stands, against a <c>TChartPlot</c> named

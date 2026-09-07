@@ -34,10 +34,10 @@ Every change needs tests. Name them `Subject_Scenario_Expectation`, the way the 
 fixtures do, for example `NiceBreaks_NegativeRange_ReturnsBreaksAcrossZero`. A bug fix starts with a
 test that fails before the fix.
 
-Four console tools under `Tools\` go beyond the unit tests: `CoreCheck` compiles every core
-unit and renders every scenario, `VclCheck` and `FmxCheck` drive the real controls through
-their mouse handling and export, and `Gallery` renders the whole catalogue to PNG. Run the
-ones that touch your change before opening a pull request.
+Three console tools under `Tools\` go beyond the unit tests: `CoreCheck` compiles every core
+unit and renders every scenario, and `VclCheck` and `FmxCheck` drive the real controls through
+their mouse handling and export. Run the ones that touch your change before opening a pull
+request.
 
 ## Architecture rules
 
