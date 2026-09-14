@@ -205,20 +205,31 @@ begin
 end;
 
 /// <summary>
-/// Compares two same-format bitmaps row by row. Used to prove the back buffer cache
-/// through the pixels it produces rather than through a render counter.
+/// Compares the color channels of two <c>pf32bit</c> bitmaps pixel by pixel. Used to prove
+/// the back buffer cache through the pixels it produces rather than through a render
+/// counter. The alpha byte is ignored because GDI and GDI+ leave it undefined when drawing
+/// into a 32-bit DIB through an HDC: it depends on the bitmap's prior contents and the
+/// Windows version, not on what was drawn.
 /// </summary>
 function BitmapsAreIdentical(const Left, Right: TBitmap): Boolean;
+const
+  ColorChannelsMask = $00FFFFFF;
 begin
   Result := (Left.Width = Right.Width) and (Left.Height = Right.Height);
   if not Result then
     Exit;
 
-  const RowBytes = Left.Width * 4;
   for var Y := 0 to Left.Height - 1 do
   begin
-    if not CompareMem(Left.ScanLine[Y], Right.ScanLine[Y], RowBytes) then
-      Exit(False);
+    var LeftPixel: PCardinal := Left.ScanLine[Y];
+    var RightPixel: PCardinal := Right.ScanLine[Y];
+    for var X := 0 to Left.Width - 1 do
+    begin
+      if (LeftPixel^ and ColorChannelsMask) <> (RightPixel^ and ColorChannelsMask) then
+        Exit(False);
+      Inc(LeftPixel);
+      Inc(RightPixel);
+    end;
   end;
 end;
 
