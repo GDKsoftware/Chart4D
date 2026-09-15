@@ -22,6 +22,7 @@ uses
   System.UITypes,
   DUnitX.TestFramework,
   Chart4D.Canvas.Interfaces,
+  Chart4D.Tests.Asserts,
   Chart4D.Tests.RecordingCanvas,
   Chart4D.Types;
 

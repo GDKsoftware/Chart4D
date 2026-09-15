@@ -777,7 +777,7 @@ begin
     { A value label is the only text drawn centered on both axes: the axis break labels are
       Right/Middle and Center/Top, the title, subtitle and legend are Left aligned. }
     var ValueLabelTexts := '';
-    var AxisLabelRight := 0.0;
+    var AxisLabelRight: Double := 0.0;
     for var Call in FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawText) do
     begin
       const IsValueLabel = (Call.AlignH = TTextAlignH.Center) and (Call.AlignV = TTextAlignV.Middle);

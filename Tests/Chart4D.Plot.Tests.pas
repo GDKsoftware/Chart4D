@@ -19,7 +19,8 @@ interface
 
 uses
   DUnitX.TestFramework,
-  Chart4D.Plot;
+  Chart4D.Plot,
+  Chart4D.Tests.Asserts;
 
 type
   [TestFixture]
