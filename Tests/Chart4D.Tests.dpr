@@ -23,6 +23,7 @@ uses
   DUnitX.Loggers.Xml.NUnit,
   DUnitX.TestFramework,
   Chart4D.Tests.RecordingCanvas in 'Chart4D.Tests.RecordingCanvas.pas',
+  Chart4D.Tests.Asserts in 'Chart4D.Tests.Asserts.pas',
   Chart4D.Axis.Tests in 'Chart4D.Axis.Tests.pas',
   Chart4D.Mapper.Tests in 'Chart4D.Mapper.Tests.pas',
   Chart4D.Plot.Tests in 'Chart4D.Plot.Tests.pas',

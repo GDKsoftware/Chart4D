@@ -1183,8 +1183,8 @@ begin
 
   for var CategoryIndex := 0 to High(FPlot.Categories) do
   begin
-    var PositiveSum := 0.0;
-    var NegativeSum := 0.0;
+    var PositiveSum: Double := 0.0;
+    var NegativeSum: Double := 0.0;
     for var CurrentSeries in FPlot.Series do
     begin
       const Value = CurrentSeries.Values[CategoryIndex];
@@ -2200,8 +2200,8 @@ begin
   const CategoryPixel = FGeometry.CategoryCenter(CategoryIndex);
   const Total = CategoryTotal(CategoryIndex);
 
-  var PositiveRunning := 0.0;
-  var NegativeRunning := 0.0;
+  var PositiveRunning: Double := 0.0;
+  var NegativeRunning: Double := 0.0;
   for var SeriesIndex := 0 to FPlot.Series.Count - 1 do
   begin
     const StackedSeries = FPlot.Series[SeriesIndex];
@@ -2256,8 +2256,8 @@ begin
     const CategoryPixel = FGeometry.CategoryCenter(CategoryIndex);
     const Total = CategoryTotal(CategoryIndex);
 
-    var PositiveRunning := 0.0;
-    var NegativeRunning := 0.0;
+    var PositiveRunning: Double := 0.0;
+    var NegativeRunning: Double := 0.0;
     for var SeriesIndex := 0 to SeriesCount - 1 do
     begin
       const RawValue = FPlot.Series[SeriesIndex].Values[CategoryIndex];
@@ -2413,7 +2413,7 @@ begin
   const HasZeroTotal = SameValue(SeriesTotal, 0);
   if not HasZeroTotal then
   begin
-    var CumulativeValue := 0.0;
+    var CumulativeValue: Double := 0.0;
     for var Index := 0 to High(PieSeries.Values) do
     begin
       const Value = PieSeries.Values[Index];

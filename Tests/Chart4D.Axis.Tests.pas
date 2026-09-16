@@ -21,6 +21,7 @@ uses
   System.SysUtils,
   DUnitX.TestFramework,
   Chart4D.Axis,
+  Chart4D.Tests.Asserts,
   Chart4D.Types;
 
 type

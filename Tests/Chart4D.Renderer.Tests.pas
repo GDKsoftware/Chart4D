@@ -21,6 +21,7 @@ uses
   System.UITypes,
   DUnitX.TestFramework,
   Chart4D.Canvas.Interfaces,
+  Chart4D.Tests.Asserts,
   Chart4D.Tests.RecordingCanvas;
 
 type
@@ -1028,7 +1029,7 @@ begin
 
     Assert.AreEqual(4, Length(HitMap));
 
-    var TotalSweep := 0.0;
+    var TotalSweep: Double := 0.0;
     for var Target in HitMap do
     begin
       Assert.IsTrue(Target.IsSector, 'A pie wedge hit target must be a sector');
