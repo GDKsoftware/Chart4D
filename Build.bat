@@ -65,25 +65,13 @@ if errorlevel 1 exit /b 1
 echo.
 echo --- Building and running tests ---
 
+rem Both platforms, because Win64 maps Extended onto Double: the same source can be
+rem correct on one and wrong on the other.
 if exist "Tests\build.bat" (
-  pushd Tests
-  call .\build.bat
-  if errorlevel 1 (
-    popd
-    echo Tests build failed!
-    exit /b 1
+  for %%P in (Win32 Win64) do (
+    call :BuildAndRunTests %%P
+    if errorlevel 1 exit /b 1
   )
-  if exist "Win32\Debug\Chart4D.Tests.exe" (
-    Win32\Debug\Chart4D.Tests.exe
-    if errorlevel 1 (
-      popd
-      echo Tests failed!
-      exit /b 1
-    )
-  ) else (
-    echo Test executable not found, skipping test run.
-  )
-  popd
 ) else (
   echo Tests\build.bat not found yet, skipping tests.
 )
@@ -132,4 +120,28 @@ if errorlevel 1 (
   echo Build of %PACKAGENAME% failed!
   exit /b 1
 )
+exit /b 0
+
+:BuildAndRunTests
+set TESTPLATFORM=%~1
+echo.
+echo --- %TESTPLATFORM% ---
+pushd Tests
+call .\build.bat %TESTPLATFORM%
+if errorlevel 1 (
+  popd
+  echo Tests build failed for %TESTPLATFORM%!
+  exit /b 1
+)
+if exist "%TESTPLATFORM%\Debug\Chart4D.Tests.exe" (
+  %TESTPLATFORM%\Debug\Chart4D.Tests.exe
+  if errorlevel 1 (
+    popd
+    echo Tests failed for %TESTPLATFORM%!
+    exit /b 1
+  )
+) else (
+  echo Test executable for %TESTPLATFORM% not found, skipping test run.
+)
+popd
 exit /b 0

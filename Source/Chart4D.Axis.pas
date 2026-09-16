@@ -342,9 +342,11 @@ end;
 
 class function TAxisScale.NiceStepFromRaw(const RawStep: Double): Double;
 begin
-  { Double(10) selects the Double overload: with two integer arguments Win64 picks the
-    Single one, and Power(10, -1) becomes 0.100000001. }
-  const Magnitude = Power(Double(10), Floor(Log10(RawStep)));
+  { The exponent is whole, so IntPower stays exact where Power goes through exp/ln, and
+    Double(10) keeps Win64 off the Single overload, where 10 to the -1 would become
+    0.100000001. }
+  const Exponent = Floor(Log10(RawStep));
+  const Magnitude = IntPower(Double(10), Exponent);
   const Normalized = RawStep / Magnitude;
   Result := NiceFactor(Normalized) * Magnitude;
 end;
