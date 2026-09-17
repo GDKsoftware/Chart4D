@@ -80,6 +80,8 @@ resourcestring
   SPngEncoderNotFound = 'No PNG image encoder is available on this system';
   /// <summary>Raised when writing a chart PNG to disk fails.</summary>
   SFailedToSavePng = 'Failed to save chart PNG to "%s" (GDI+ status %d)';
+  /// <summary>Raised when a painter is asked to paint into a rectangle with a negative width or height.</summary>
+  SPaintBoundsNegativeSize = 'Cannot paint a chart into bounds of negative size (%g x %g)';
 
 implementation
 

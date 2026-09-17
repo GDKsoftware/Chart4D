@@ -220,10 +220,19 @@ begin
 end;
 ```
 
+When the chart shares the canvas with other content, paint it into a rectangle instead. It is
+laid out for that rectangle's size, and nothing is drawn outside it. `MouseMove` then still
+takes canvas coordinates; a position outside the rectangle counts as leaving the chart.
+
+```pascal
+FPainter.Paint(PaintBox.Canvas, TRect.Create(200, 0, PaintBox.Width, PaintBox.Height));
+```
+
 The painter does not own the plot: free the painter first, then the plot. It takes over
 `Plot.OnChanged` so that every change repaints. `FPainter.View` also carries `ShowTooltips` and
 `OnDataPointHover`. In FireMonkey, `Chart4D.FMX` has a `TChartPainter` with the same shape;
-call its `Paint` from `OnPaint` and map `OnRepaintRequest` to `Repaint`.
+call its `Paint` from `OnPaint`, passing the `ARect` it receives, and map `OnRepaintRequest`
+to `Repaint`.
 
 ## Export
 

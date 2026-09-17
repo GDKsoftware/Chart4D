@@ -95,9 +95,10 @@ type
   private
     FView: TChartView;
     FBackBuffer: TBitmap;
+    FPaintedBounds: TRectF;
 
     procedure ResizeBackBuffer(const Width, Height: Single);
-    procedure DrawOverlay(const TargetCanvas: FMX.Graphics.TCanvas; const Width, Height: Single);
+    procedure DrawOverlay(const TargetCanvas: FMX.Graphics.TCanvas; const Bounds: TRectF);
 
   public
     /// <summary>
@@ -110,19 +111,33 @@ type
 
     /// <summary>
     /// Paints the plot at <c>Width</c> x <c>Height</c> with its top-left corner at the
-    /// origin of <c>TargetCanvas</c>, which must be inside a scene (as it is during a
-    /// control's <c>Paint</c>): resizes the back buffer, re-renders it when the view says
-    /// so, copies it to <c>TargetCanvas</c>, then draws the hover tooltip there.
+    /// origin of <c>TargetCanvas</c>. Same as <c>Paint</c> with bounds
+    /// <c>(0, 0, Width, Height)</c>.
     /// </summary>
-    /// <exception cref="EChart4DException">Raised when a scene cannot be started on the back buffer.</exception>
-    procedure Paint(const TargetCanvas: FMX.Graphics.TCanvas; const Width, Height: Single);
+    /// <exception cref="EChart4DException">Raised when <c>Width</c> or <c>Height</c> is
+    /// negative, or when a scene cannot be started on the back buffer.</exception>
+    procedure Paint(const TargetCanvas: FMX.Graphics.TCanvas; const Width, Height: Single); overload;
+    /// <summary>
+    /// Paints the plot into <c>Bounds</c> on <c>TargetCanvas</c>, which must be inside a
+    /// scene (as it is during a control's <c>Paint</c> or a <c>TPaintBox.OnPaint</c>), laid
+    /// out for the size of <c>Bounds</c>: resizes the back buffer, re-renders it when the view
+    /// says so, copies it into <c>Bounds</c>, then draws the hover tooltip there. Remembers
+    /// <c>Bounds</c>, so <c>MouseMove</c> takes <c>TargetCanvas</c> coordinates.
+    /// </summary>
+    /// <exception cref="EChart4DException">Raised when <c>Bounds</c> has a negative width or
+    /// height, or when a scene cannot be started on the back buffer.</exception>
+    procedure Paint(const TargetCanvas: FMX.Graphics.TCanvas; const Bounds: TRectF); overload;
     /// <summary>
     /// Renders the plot into the back buffer at <c>Width</c> x <c>Height</c> now, even when
     /// the last render is still valid, and refreshes the hit map.
     /// </summary>
     /// <exception cref="EChart4DException">Raised when a scene cannot be started on the back buffer.</exception>
     procedure RenderToBackBuffer(const Width, Height: Single);
-    /// <summary>Passes a pointer move, in canvas coordinates, on to the view.</summary>
+    /// <summary>
+    /// Passes a pointer move on to the view. <c>X</c> and <c>Y</c> are in the coordinates of
+    /// the canvas last painted on; a position outside the last painted bounds counts as
+    /// leaving the chart.
+    /// </summary>
     procedure MouseMove(const X, Y: Single);
     /// <summary>Passes the pointer leaving the painted area on to the view.</summary>
     procedure MouseLeave;
@@ -387,14 +402,23 @@ end;
 
 procedure TChartPainter.Paint(const TargetCanvas: FMX.Graphics.TCanvas; const Width, Height: Single);
 begin
-  ResizeBackBuffer(Width, Height);
+  Paint(TargetCanvas, RectF(0, 0, Width, Height));
+end;
 
-  if FView.NeedsRender(Width, Height) then
-    RenderToBackBuffer(Width, Height);
+procedure TChartPainter.Paint(const TargetCanvas: FMX.Graphics.TCanvas; const Bounds: TRectF);
+begin
+  const HasNegativeSize = (Bounds.Width < 0) or (Bounds.Height < 0);
+  if HasNegativeSize then
+    raise EChart4DException.CreateFmt(SPaintBoundsNegativeSize, [Bounds.Width, Bounds.Height]);
 
-  TargetCanvas.DrawBitmap(FBackBuffer, RectF(0, 0, FBackBuffer.Width, FBackBuffer.Height),
-                          RectF(0, 0, Width, Height), 1.0);
-  DrawOverlay(TargetCanvas, Width, Height);
+  FPaintedBounds := Bounds;
+  ResizeBackBuffer(Bounds.Width, Bounds.Height);
+
+  if FView.NeedsRender(Bounds.Width, Bounds.Height) then
+    RenderToBackBuffer(Bounds.Width, Bounds.Height);
+
+  TargetCanvas.DrawBitmap(FBackBuffer, RectF(0, 0, FBackBuffer.Width, FBackBuffer.Height), Bounds, 1.0);
+  DrawOverlay(TargetCanvas, Bounds);
 end;
 
 procedure TChartPainter.RenderToBackBuffer(const Width, Height: Single);
@@ -416,7 +440,16 @@ end;
 
 procedure TChartPainter.MouseMove(const X, Y: Single);
 begin
-  FView.MouseMove(X, Y);
+  { Hit targets such as line points have a radius, so a pointer just outside the chart
+    could still hit one; outside the bounds is outside the chart, whatever it is near. }
+  const IsInsideChart = FPaintedBounds.Contains(PointF(X, Y));
+  if not IsInsideChart then
+  begin
+    FView.MouseLeave;
+    Exit;
+  end;
+
+  FView.MouseMove(X - FPaintedBounds.Left, Y - FPaintedBounds.Top);
 end;
 
 procedure TChartPainter.MouseLeave;
@@ -436,13 +469,22 @@ begin
   FView.Invalidate;
 end;
 
-procedure TChartPainter.DrawOverlay(const TargetCanvas: FMX.Graphics.TCanvas; const Width, Height: Single);
+procedure TChartPainter.DrawOverlay(const TargetCanvas: FMX.Graphics.TCanvas; const Bounds: TRectF);
 begin
   if not FView.HasOverlay then
     Exit;
 
-  const ChartCanvas: IChartCanvas = TFmxChartCanvas.Create(TargetCanvas);
-  FView.DrawOverlay(ChartCanvas, Width, Height);
+  const SavedState = TargetCanvas.SaveState;
+  try
+    { A tooltip pushed against the chart edge strokes its border across that edge; on a
+      canvas shared with other content that half pixel must not land outside Bounds. }
+    TargetCanvas.IntersectClipRect(Bounds);
+    TargetCanvas.MultiplyMatrix(TMatrix.CreateTranslation(Bounds.Left, Bounds.Top));
+    const ChartCanvas: IChartCanvas = TFmxChartCanvas.Create(TargetCanvas);
+    FView.DrawOverlay(ChartCanvas, Bounds.Width, Bounds.Height);
+  finally
+    TargetCanvas.RestoreState(SavedState);
+  end;
 end;
 
 constructor TChart4D.Create(AOwner: TComponent);

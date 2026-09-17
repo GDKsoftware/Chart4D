@@ -326,6 +326,183 @@ begin
   end;
 end;
 
+/// <summary>
+/// Counts the pixels of <c>Target</c> inside <c>Bounds</c> whose color channels differ from
+/// the pixel of <c>Reference</c> at the same offset within <c>Bounds</c>. The alpha byte is
+/// ignored for the reason given at <c>BitmapsAreIdentical</c>.
+/// </summary>
+function CountRegionDifferences(const Target: TBitmap; const Bounds: TRect; const Reference: TBitmap): Integer;
+const
+  ColorChannelsMask = $00FFFFFF;
+begin
+  Result := 0;
+  for var Y := 0 to Bounds.Height - 1 do
+  begin
+    var TargetPixel: PCardinal := Target.ScanLine[Bounds.Top + Y];
+    Inc(TargetPixel, Bounds.Left);
+    var ReferencePixel: PCardinal := Reference.ScanLine[Y];
+    for var X := 0 to Bounds.Width - 1 do
+    begin
+      if (TargetPixel^ and ColorChannelsMask) <> (ReferencePixel^ and ColorChannelsMask) then
+        Inc(Result);
+      Inc(TargetPixel);
+      Inc(ReferencePixel);
+    end;
+  end;
+end;
+
+/// <summary>Counts the pixels of <c>Target</c> outside <c>Bounds</c> that no longer hold <c>MarkerColor</c>.</summary>
+function CountChangedPixelsOutside(const Target: TBitmap; const Bounds: TRect; const MarkerColor: TColor): Integer;
+const
+  ColorChannelsMask = $00FFFFFF;
+begin
+  { The marker is a color whose red and blue channels are equal, so its TColor value and
+    its pf32bit pixel value are the same despite the reversed channel order. }
+  Result := 0;
+  for var Y := 0 to Target.Height - 1 do
+  begin
+    var Pixel: PCardinal := Target.ScanLine[Y];
+    for var X := 0 to Target.Width - 1 do
+    begin
+      const IsOutside = not Bounds.Contains(TPoint.Create(X, Y));
+      if IsOutside and ((Pixel^ and ColorChannelsMask) <> Cardinal(MarkerColor)) then
+        Inc(Result);
+      Inc(Pixel);
+    end;
+  end;
+end;
+
+/// <summary>
+/// Proves that <c>TChartPainter</c> paints into bounds away from the canvas origin. The same
+/// painter paints once at the origin of a bitmap of the chart's size and once into offset
+/// bounds on a larger bitmap filled with a marker color. The offset region must match the
+/// origin paint pixel for pixel, at rest and with the tooltip showing, which proves the
+/// back buffer copy and the overlay translation; nothing outside the bounds may change.
+/// Pointer positions are canvas coordinates, so hovering the offset target must find it
+/// and moving outside the bounds must count as leaving. The hovered point is the last one
+/// of a line chart, whose tooltip is pushed against the right edge of the chart, so the
+/// check also covers a tooltip border that would otherwise stroke across the bounds.
+/// </summary>
+procedure VerifyPainterBounds;
+const
+  OffsetX = 70;
+  OffsetY = 40;
+  MarkerColor = clFuchsia;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Title := 'Life expectancy';
+    Plot.Subtitle := 'Selected countries, 1960-2020';
+    Plot.Categories := ['1960', '1980', '2000', '2020'];
+    Plot.AddSeries('Netherlands', [73.5, 75.8, 78.0, 81.4]);
+    Plot.AddSeries('Portugal', [61.2, 71.0, 76.4, 80.8]);
+    const Bounds = TRect.Create(OffsetX, OffsetY, OffsetX + DefaultExportWidth, OffsetY + DefaultExportHeight);
+
+    var HitMap: TArray<TChartHitTarget>;
+    const HitMapBitmap = TGPBitmap.Create(DefaultExportWidth, DefaultExportHeight, PixelFormat32bppARGB);
+    try
+      const Graphics = TGPGraphics.Create(HitMapBitmap);
+      try
+        const ChartCanvas: IChartCanvas = TGdiPlusChartCanvas.Create(Graphics);
+        TChartRenderer.Render(Plot, ChartCanvas, DefaultExportWidth, DefaultExportHeight, HitMap);
+      finally
+        Graphics.Free;
+      end;
+    finally
+      HitMapBitmap.Free;
+    end;
+
+    const Painter = TChartPainter.Create(Plot);
+    const Recorder = THoverRecorder.Create;
+    const Reference = TBitmap.Create;
+    const Target = TBitmap.Create;
+    try
+      Painter.View.OnDataPointHover := Recorder.HandleHover;
+      Reference.PixelFormat := pf32bit;
+      Reference.SetSize(DefaultExportWidth, DefaultExportHeight);
+      Target.PixelFormat := pf32bit;
+      Target.SetSize(Bounds.Right + OffsetX, Bounds.Bottom + OffsetY);
+
+      Painter.Paint(Reference.Canvas, DefaultExportWidth, DefaultExportHeight);
+      Target.Canvas.Brush.Color := MarkerColor;
+      Target.Canvas.FillRect(TRect.Create(0, 0, Target.Width, Target.Height));
+      Painter.Paint(Target.Canvas, Bounds);
+
+      var DifferingPixels := CountRegionDifferences(Target, Bounds, Reference);
+      if DifferingPixels <> 0 then
+        raise EChart4DException.CreateFmt(
+          'painting into offset bounds should reproduce the origin paint, but %d pixels differ', [DifferingPixels]);
+      var ChangedOutside := CountChangedPixelsOutside(Target, Bounds, MarkerColor);
+      if ChangedOutside <> 0 then
+        raise EChart4DException.CreateFmt(
+          'painting into offset bounds changed %d pixels outside those bounds', [ChangedOutside]);
+
+      Writeln('VclCheck: the painter paints into offset bounds and leaves the rest of the canvas alone');
+
+      const HoveredTarget = HitMap[High(HitMap)];
+      const HoverX = OffsetX + Round(HoveredTarget.Center.X);
+      const HoverY = OffsetY + Round(HoveredTarget.Center.Y);
+      Painter.MouseMove(HoverX, HoverY);
+      if (Recorder.EventCount <> 1) or (not Recorder.LastInfo.HasHit) then
+        raise EChart4DException.CreateFmt(
+          'hovering the offset target should report one hit, but %d events fired', [Recorder.EventCount]);
+      if Recorder.LastInfo.CategoryLabel <> HoveredTarget.Info.CategoryLabel then
+        raise EChart4DException.CreateFmt(
+          'hovering at the offset reported category "%s" but the target there is "%s"',
+          [Recorder.LastInfo.CategoryLabel, HoveredTarget.Info.CategoryLabel]);
+
+      const RestingReference = TBitmap.Create;
+      try
+        RestingReference.Assign(Reference);
+        Painter.Paint(Reference.Canvas, DefaultExportWidth, DefaultExportHeight);
+        if BitmapsAreIdentical(RestingReference, Reference) then
+          raise EChart4DException.Create('hovering a bar should draw a tooltip, but the origin paint is unchanged');
+      finally
+        RestingReference.Free;
+      end;
+
+      Target.Canvas.FillRect(TRect.Create(0, 0, Target.Width, Target.Height));
+      Painter.Paint(Target.Canvas, Bounds);
+
+      DifferingPixels := CountRegionDifferences(Target, Bounds, Reference);
+      if DifferingPixels <> 0 then
+        raise EChart4DException.CreateFmt(
+          'the tooltip in offset bounds should match the one at the origin, but %d pixels differ', [DifferingPixels]);
+      ChangedOutside := CountChangedPixelsOutside(Target, Bounds, MarkerColor);
+      if ChangedOutside <> 0 then
+        raise EChart4DException.CreateFmt(
+          'the tooltip in offset bounds changed %d pixels outside those bounds', [ChangedOutside]);
+
+      Writeln('VclCheck: hovering in offset bounds reports the target and draws its tooltip at the offset');
+
+      Painter.MouseMove(OffsetX - 1, HoverY);
+      if (Recorder.EventCount <> 2) or Recorder.LastInfo.HasHit then
+        raise EChart4DException.Create('moving outside the painted bounds should report leaving the chart');
+
+      Writeln('VclCheck: moving outside the painted bounds counts as leaving the chart');
+
+      var RaisedOnNegativeSize := False;
+      try
+        Painter.Paint(Target.Canvas, TRect.Create(OffsetX, OffsetY, OffsetX - 1, OffsetY + 1));
+      except
+        on E: EChart4DException do
+          RaisedOnNegativeSize := True;
+      end;
+      if not RaisedOnNegativeSize then
+        raise EChart4DException.Create('painting into bounds of negative width should raise');
+
+      Writeln('VclCheck: painting into bounds of negative size raises');
+    finally
+      Target.Free;
+      Reference.Free;
+      Recorder.Free;
+      Painter.Free;
+    end;
+  finally
+    Plot.Free;
+  end;
+end;
+
 function SimulateHover(const HitMap: TArray<TChartHitTarget>): TChartHitInfo;
 begin
   const HasHitTargets = (Length(HitMap) > 0);
@@ -396,6 +573,7 @@ begin
 
     VerifyControlHoverChain;
     VerifyBackBufferCaching;
+    VerifyPainterBounds;
 
     Writeln('VclCheck: all checks passed');
     ExitCode := 0;

@@ -212,7 +212,7 @@ const
   DefaultExportHeight = 450;
 ```
 
-The `resourcestring` entries for the capabilities in 4.12 to 4.24:
+The `resourcestring` entries for the capabilities in 4.12 to 4.25:
 
 ```pascal
 resourcestring
@@ -222,6 +222,7 @@ resourcestring
   SBandValueCountMismatch = 'Band series "%s" has %d low value(s) but %d high value(s)';
   SPieRequiresSingleSeries = 'Pie/Donut charts require exactly one series, got %d';
   SPieValuesMustBeNonNegative = 'Pie/Donut values must not be negative, got %g';
+  SPaintBoundsNegativeSize = 'Cannot paint a chart into bounds of negative size (%g x %g)';
 ```
 
 ### 4.3 Chart4D.Style.pas
@@ -673,7 +674,8 @@ type
   public
     constructor Create(const Plot: TChartPlot);   // not owned
     destructor Destroy; override;
-    procedure Paint(const TargetCanvas: TCanvas; const Width, Height: Integer);
+    procedure Paint(const TargetCanvas: TCanvas; const Width, Height: Integer); overload;
+    procedure Paint(const TargetCanvas: TCanvas; const Bounds: TRect); overload;
     procedure RenderToBackBuffer(const Width, Height: Integer);
     procedure MouseMove(const X, Y: Integer);
     procedure MouseLeave;
@@ -724,7 +726,8 @@ type
   public
     constructor Create(const Plot: TChartPlot);   // not owned
     destructor Destroy; override;
-    procedure Paint(const TargetCanvas: FMX.Graphics.TCanvas; const Width, Height: Single);
+    procedure Paint(const TargetCanvas: FMX.Graphics.TCanvas; const Width, Height: Single); overload;
+    procedure Paint(const TargetCanvas: FMX.Graphics.TCanvas; const Bounds: TRectF); overload;
     procedure RenderToBackBuffer(const Width, Height: Single);
     procedure MouseMove(const X, Y: Single);
     procedure MouseLeave;
@@ -1447,11 +1450,22 @@ type
 
 `TChartPainter` (declared in `Chart4D.VCL.pas`, 4.9, and in `Chart4D.FMX.pas`, 4.10, with the
 same shape) owns a `TChartView` on a caller-supplied plot and the framework's back buffer.
-`Paint(TargetCanvas, Width, Height)` runs four steps in order: resize the back buffer
-(which invalidates the view when the size actually changed), render into it through the
-view when `View.NeedsRender` is true, copy it to `TargetCanvas` at the origin, and let the
-view draw its overlay on `TargetCanvas`. `RenderToBackBuffer` renders into the back buffer
-unconditionally. `MouseMove` and `MouseLeave` pass the pointer on to the view. The caller
+`Paint(TargetCanvas, Bounds)` lays the chart out for the size of `Bounds` (`TRect` in the
+VCL, `TRectF` in FMX) and runs four steps in order: resize the back buffer (which
+invalidates the view when the size actually changed), render into it through the view when
+`View.NeedsRender` is true, copy it to `TargetCanvas` at `Bounds`, and let the view draw its
+overlay on `TargetCanvas`, translated to `Bounds.TopLeft` and clipped to `Bounds`. The clip
+matters because a tooltip pushed against the chart edge strokes its border across that
+edge. `Paint(TargetCanvas, Width, Height)` is `Paint` with bounds `(0, 0, Width, Height)`,
+which is what `TChart4D` calls. Both raise `EChart4DException` (`SPaintBoundsNegativeSize`)
+for a negative width or height. `RenderToBackBuffer` renders into the back buffer
+unconditionally.
+
+`Paint` remembers `Bounds`, so `MouseMove(X, Y)` takes coordinates on the canvas last painted
+on. Inside those bounds it passes the position, relative to `Bounds.TopLeft`, on to the view;
+outside them (including before the first `Paint`) it calls `View.MouseLeave` instead,
+because a hit target with a radius could otherwise be hit from just outside the chart.
+`MouseLeave` passes the call on to the view. The caller
 maps `View.OnRepaintRequest` to its framework's repaint and frees the painter before the
 plot.
 
