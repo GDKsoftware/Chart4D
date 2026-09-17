@@ -11,8 +11,9 @@
 unit Chart4D.VCL;
 
 /// <summary>
-/// The VCL adapter: a GDI+ backed <c>IChartCanvas</c> implementation and the
-/// <c>TChart4D</c> graphic control that owns a <c>TChartPlot</c>, repaints on
+/// The VCL adapter: a GDI+ backed <c>IChartCanvas</c> implementation, the
+/// <c>TChartPainter</c> that paints a plot through a back buffer onto any VCL canvas, and
+/// the <c>TChart4D</c> graphic control that owns a <c>TChartPlot</c>, repaints on
 /// <c>OnChanged</c>, and exports PNG snapshots.
 /// </summary>
 
@@ -33,10 +34,9 @@ uses
   Chart4D.Types,
   Chart4D.Consts,
   Chart4D.Canvas.Interfaces,
-  Chart4D.Hover,
   Chart4D.Plot,
   Chart4D.Renderer,
-  Chart4D.Tooltip;
+  Chart4D.View;
 
 type
   /// <summary>
@@ -111,6 +111,53 @@ type
   end;
 
   /// <summary>
+  /// Paints a <c>TChartPlot</c> onto a VCL canvas the caller owns, such as the canvas of a
+  /// <c>TPaintBox</c> or of a custom control. Keeps the rendered chart in a 32-bit back
+  /// buffer so a repaint only re-renders when the plot or the size changed, and draws the
+  /// hover tooltip on top. The framework-neutral decisions live in the owned
+  /// <c>TChartView</c>.
+  /// </summary>
+  TChartPainter = class
+  private
+    FView: TChartView;
+    FBackBuffer: TBitmap;
+
+    procedure ResizeBackBuffer(const Width, Height: Integer);
+    procedure DrawOverlay(const TargetCanvas: TCanvas; const Width, Height: Integer);
+
+  public
+    /// <summary>
+    /// Creates a painter for <c>Plot</c>. The painter does not own <c>Plot</c>, which must
+    /// outlive it, and takes over <c>Plot.OnChanged</c> (see <c>TChartView.Create</c>).
+    /// </summary>
+    constructor Create(const Plot: TChartPlot);
+    /// <summary>Destroys the painter, its view and its back buffer, but not the plot.</summary>
+    destructor Destroy; override;
+
+    /// <summary>
+    /// Paints the plot at <c>Width</c> x <c>Height</c> pixels with its top-left corner at
+    /// the origin of <c>TargetCanvas</c>: resizes the back buffer, re-renders it when the
+    /// view says so, copies it to <c>TargetCanvas</c>, then draws the hover tooltip there.
+    /// </summary>
+    procedure Paint(const TargetCanvas: TCanvas; const Width, Height: Integer);
+    /// <summary>
+    /// Renders the plot into the back buffer at <c>Width</c> x <c>Height</c> pixels now,
+    /// even when the last render is still valid, and refreshes the hit map.
+    /// </summary>
+    procedure RenderToBackBuffer(const Width, Height: Integer);
+    /// <summary>Passes a pointer move, in canvas coordinates, on to the view.</summary>
+    procedure MouseMove(const X, Y: Integer);
+    /// <summary>Passes the pointer leaving the painted area on to the view.</summary>
+    procedure MouseLeave;
+
+    /// <summary>
+    /// The owned view: <c>ShowTooltips</c>, <c>OnDataPointHover</c>, and the
+    /// <c>OnRepaintRequest</c> the caller maps to <c>Invalidate</c>.
+    /// </summary>
+    property View: TChartView read FView;
+  end;
+
+  /// <summary>
   /// A VCL graphic control that owns a <c>TChartPlot</c>, renders it with
   /// <c>TChartRenderer</c> on top of GDI+, repaints on every plot change, and can
   /// export the current plot to a PNG file at an arbitrary size. Also tracks the mouse
@@ -119,16 +166,12 @@ type
   TChart4D = class(TGraphicControl)
   private
     FPlot: TChartPlot;
-    FHover: TChartHoverState;
+    FPainter: TChartPainter;
     FOnDataPointHover: TChartHoverEvent;
-    FBackBuffer: TBitmap;
-    FBackBufferValid: Boolean;
 
     procedure RenderForExport(const Graphics: TGPGraphics; const Width, Height: Single);
-    procedure EnsureBackBuffer;
-    procedure DrawTooltipOverlay;
-    procedure PlotChanged(Sender: TObject);
-    procedure HoverChanged;
+    procedure ViewDataPointHover(Sender: TObject; const Info: TChartHitInfo);
+    procedure ViewRepaintRequest(Sender: TObject);
     function GetShowTooltips: Boolean;
     procedure SetShowTooltips(const Value: Boolean);
 
@@ -397,6 +440,82 @@ begin
     raise EChart4DException.CreateFmt(SFailedToSavePng, [FilePath, Ord(SaveStatus)]);
 end;
 
+{ TChartPainter }
+
+constructor TChartPainter.Create(const Plot: TChartPlot);
+begin
+  inherited Create;
+  FView := TChartView.Create(Plot);
+  FBackBuffer := TBitmap.Create;
+  FBackBuffer.PixelFormat := pf32bit;
+end;
+
+destructor TChartPainter.Destroy;
+begin
+  FBackBuffer.Free;
+  FView.Free;
+  inherited Destroy;
+end;
+
+procedure TChartPainter.Paint(const TargetCanvas: TCanvas; const Width, Height: Integer);
+begin
+  ResizeBackBuffer(Width, Height);
+
+  if FView.NeedsRender(Width, Height) then
+    RenderToBackBuffer(Width, Height);
+
+  TargetCanvas.Draw(0, 0, FBackBuffer);
+  DrawOverlay(TargetCanvas, Width, Height);
+end;
+
+procedure TChartPainter.RenderToBackBuffer(const Width, Height: Integer);
+begin
+  ResizeBackBuffer(Width, Height);
+  FView.Invalidate;
+
+  const Graphics = TGPGraphics.Create(FBackBuffer.Canvas.Handle);
+  try
+    const ChartCanvas: IChartCanvas = TGdiPlusChartCanvas.Create(Graphics);
+    FView.Render(ChartCanvas, Width, Height);
+  finally
+    Graphics.Free;
+  end;
+end;
+
+procedure TChartPainter.MouseMove(const X, Y: Integer);
+begin
+  FView.MouseMove(X, Y);
+end;
+
+procedure TChartPainter.MouseLeave;
+begin
+  FView.MouseLeave;
+end;
+
+procedure TChartPainter.ResizeBackBuffer(const Width, Height: Integer);
+begin
+  const SizeChanged = (FBackBuffer.Width <> Width) or (FBackBuffer.Height <> Height);
+  if not SizeChanged then
+    Exit;
+
+  FBackBuffer.SetSize(Width, Height);
+  FView.Invalidate;
+end;
+
+procedure TChartPainter.DrawOverlay(const TargetCanvas: TCanvas; const Width, Height: Integer);
+begin
+  if not FView.HasOverlay then
+    Exit;
+
+  const Graphics = TGPGraphics.Create(TargetCanvas.Handle);
+  try
+    const ChartCanvas: IChartCanvas = TGdiPlusChartCanvas.Create(Graphics);
+    FView.DrawOverlay(ChartCanvas, Width, Height);
+  finally
+    Graphics.Free;
+  end;
+end;
+
 { TChart4D }
 
 constructor TChart4D.Create(AOwner: TComponent);
@@ -405,30 +524,28 @@ begin
   ControlStyle := ControlStyle + [csOpaque];
 
   FPlot := TChartPlot.Create;
-  FPlot.OnChanged := PlotChanged;
-  FHover := TChartHoverState.Create;
-  FBackBuffer := TBitmap.Create;
-  FBackBuffer.PixelFormat := pf32bit;
+  FPainter := TChartPainter.Create(FPlot);
+  FPainter.View.OnDataPointHover := ViewDataPointHover;
+  FPainter.View.OnRepaintRequest := ViewRepaintRequest;
   Width := DefaultExportWidth;
   Height := DefaultExportHeight;
 end;
 
 destructor TChart4D.Destroy;
 begin
-  FHover.Free;
-  FBackBuffer.Free;
+  FPainter.Free;
   FPlot.Free;
   inherited Destroy;
 end;
 
 function TChart4D.GetShowTooltips: Boolean;
 begin
-  Result := FHover.Enabled;
+  Result := FPainter.View.ShowTooltips;
 end;
 
 procedure TChart4D.SetShowTooltips(const Value: Boolean);
 begin
-  FHover.Enabled := Value;
+  FPainter.View.ShowTooltips := Value;
 end;
 
 procedure TChart4D.SaveToPng(const FilePath: string;
@@ -456,59 +573,18 @@ end;
 
 procedure TChart4D.Paint;
 begin
-  EnsureBackBuffer;
-  Canvas.Draw(0, 0, FBackBuffer);
-  DrawTooltipOverlay;
+  FPainter.Paint(Canvas, Width, Height);
 end;
 
 procedure TChart4D.Resize;
 begin
-  FBackBufferValid := False;
+  FPainter.View.Invalidate;
   inherited Resize;
-end;
-
-procedure TChart4D.EnsureBackBuffer;
-begin
-  const SizeChanged = (FBackBuffer.Width <> Width) or (FBackBuffer.Height <> Height);
-  if SizeChanged then
-  begin
-    FBackBuffer.SetSize(Width, Height);
-    FBackBufferValid := False;
-  end;
-
-  if not FBackBufferValid then
-  begin
-    RenderChartToBackBuffer;
-    FBackBufferValid := True;
-  end;
 end;
 
 procedure TChart4D.RenderChartToBackBuffer;
 begin
-  const Graphics = TGPGraphics.Create(FBackBuffer.Canvas.Handle);
-  try
-    const ChartCanvas: IChartCanvas = TGdiPlusChartCanvas.Create(Graphics);
-
-    var HitMap: TArray<TChartHitTarget>;
-    TChartRenderer.Render(FPlot, ChartCanvas, Width, Height, HitMap);
-    FHover.HitMap := HitMap;
-  finally
-    Graphics.Free;
-  end;
-end;
-
-procedure TChart4D.DrawTooltipOverlay;
-begin
-  if not FHover.IsVisible then
-    Exit;
-
-  const Graphics = TGPGraphics.Create(Canvas.Handle);
-  try
-    const ChartCanvas: IChartCanvas = TGdiPlusChartCanvas.Create(Graphics);
-    TChartTooltip.Draw(ChartCanvas, FPlot.Style, FHover.Info, Width, Height, FPlot.YAxis.LocaleName);
-  finally
-    Graphics.Free;
-  end;
+  FPainter.RenderToBackBuffer(Width, Height);
 end;
 
 procedure TChart4D.RenderForExport(const Graphics: TGPGraphics; const Width, Height: Single);
@@ -517,33 +593,26 @@ begin
   TChartRenderer.Render(FPlot, ChartCanvas, Width, Height);
 end;
 
-procedure TChart4D.PlotChanged(Sender: TObject);
-begin
-  FBackBufferValid := False;
-  Invalidate;
-end;
-
 procedure TChart4D.MouseMove(Shift: TShiftState; X, Y: Integer);
 begin
   inherited MouseMove(Shift, X, Y);
-
-  if FHover.MoveTo(X, Y) then
-    HoverChanged;
+  FPainter.MouseMove(X, Y);
 end;
 
 procedure TChart4D.CMMouseLeave(var Message: TMessage);
 begin
   inherited;
-
-  if FHover.Leave then
-    HoverChanged;
+  FPainter.MouseLeave;
 end;
 
-procedure TChart4D.HoverChanged;
+procedure TChart4D.ViewDataPointHover(Sender: TObject; const Info: TChartHitInfo);
 begin
   if Assigned(FOnDataPointHover) then
-    FOnDataPointHover(Self, FHover.Info);
+    FOnDataPointHover(Self, Info);
+end;
 
+procedure TChart4D.ViewRepaintRequest(Sender: TObject);
+begin
   Invalidate;
 end;
 

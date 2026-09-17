@@ -41,6 +41,7 @@ uses
   Chart4D.Renderer in '..\..\Source\Chart4D.Renderer.pas',
   Chart4D.Tooltip in '..\..\Source\Chart4D.Tooltip.pas',
   Chart4D.Hover in '..\..\Source\Chart4D.Hover.pas',
+  Chart4D.View in '..\..\Source\Chart4D.View.pas',
   Chart4D.VCL in '..\..\Source\VCL\Chart4D.VCL.pas';
 
 procedure ExportSampleChart(const ExportPath: string);

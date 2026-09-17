@@ -184,6 +184,47 @@ end;
 
 `SaveToPng` never draws a tooltip, so an export is always clean.
 
+## Painting on your own canvas
+
+`TChart4D` is not the only way to put a plot on screen. When you already have a canvas, say a
+`TPaintBox` in an existing viewer, a `TChartPainter` paints any `TChartPlot` onto it with the
+same back buffer, hover highlight and tooltip the control uses.
+
+```pascal
+uses
+  Chart4D.Plot,
+  Chart4D.VCL;
+
+FPlot := TChartPlot.Create;
+FPainter := TChartPainter.Create(FPlot);
+FPainter.View.OnRepaintRequest := PainterRepaintRequest;
+
+procedure TFormViewer.PaintBoxPaint(Sender: TObject);
+begin
+  FPainter.Paint(PaintBox.Canvas, PaintBox.Width, PaintBox.Height);
+end;
+
+procedure TFormViewer.PaintBoxMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
+begin
+  FPainter.MouseMove(X, Y);
+end;
+
+procedure TFormViewer.PaintBoxMouseLeave(Sender: TObject);
+begin
+  FPainter.MouseLeave;
+end;
+
+procedure TFormViewer.PainterRepaintRequest(Sender: TObject);
+begin
+  PaintBox.Invalidate;
+end;
+```
+
+The painter does not own the plot: free the painter first, then the plot. It takes over
+`Plot.OnChanged` so that every change repaints. `FPainter.View` also carries `ShowTooltips` and
+`OnDataPointHover`. In FireMonkey, `Chart4D.FMX` has a `TChartPainter` with the same shape;
+call its `Paint` from `OnPaint` and map `OnRepaintRequest` to `Repaint`.
+
 ## Export
 
 ```pascal

@@ -40,10 +40,11 @@ Chart4D/
 │   ├── Chart4D.Renderer.pas
 │   ├── Chart4D.Tooltip.pas      Hit-testing and the hover tooltip (4.11)
 │   ├── Chart4D.Hover.pas        Hover state shared by both controls (4.11)
+│   ├── Chart4D.View.pas         TChartView: render validity, hover, overlay (4.25)
 │   ├── VCL/
-│   │   └── Chart4D.VCL.pas      GDI+ canvas, TChart4D control, PNG export
+│   │   └── Chart4D.VCL.pas      GDI+ canvas, TChartPainter, TChart4D control, PNG export
 │   └── FMX/
-│       └── Chart4D.FMX.pas      FMX canvas, TChart4D control, PNG export
+│       └── Chart4D.FMX.pas      FMX canvas, TChartPainter, TChart4D control, PNG export
 ├── packages/RAD Studio 13.0/
 │   ├── Chart4D_R.dpk/.dproj         requires rtl
 │   ├── Chart4D_VCL_R.dpk/.dproj     requires rtl, vcl, Chart4D_R
@@ -668,6 +669,17 @@ type
     // implements every IChartCanvas method with antialiasing enabled
   end;
 
+  TChartPainter = class
+  public
+    constructor Create(const Plot: TChartPlot);   // not owned
+    destructor Destroy; override;
+    procedure Paint(const TargetCanvas: TCanvas; const Width, Height: Integer);
+    procedure RenderToBackBuffer(const Width, Height: Integer);
+    procedure MouseMove(const X, Y: Integer);
+    procedure MouseLeave;
+    property View: TChartView read ...;           // owned
+  end;
+
   TChart4D = class(TGraphicControl)
   public
     constructor Create(AOwner: TComponent); override;
@@ -687,8 +699,17 @@ Implementation notes: `SmoothingModeAntiAlias`, `TextRenderingHintAntiAliasGridF
 fonts created with `UnitPixel` so style sizes are pixels. `TAlphaColor` maps 1:1 to the
 GDI+ ARGB color value. `SaveToPng` renders into a `TGPBitmap` and saves with the PNG
 encoder CLSID; it raises `EChart4DException` when the plot has no series to export,
-whereas painting an empty control does not (4.8). Control repaints (`Invalidate`) via `Plot.OnChanged`. Default control
-size 640x450. GDI+ startup/shutdown is handled by `Winapi.GDIPOBJ`.
+whereas painting an empty control does not (4.8). Default control size 640x450. GDI+
+startup/shutdown is handled by `Winapi.GDIPOBJ`.
+
+`TChartPainter` (4.25) keeps its back buffer in a `pf32bit` `Vcl.Graphics.TBitmap` and renders
+into it through a `TGdiPlusChartCanvas` on the bitmap's `HDC`; the tooltip overlay goes
+through a second `TGdiPlusChartCanvas` on the target canvas' `HDC`, created only while
+`View.HasOverlay` is true. `TChart4D` owns its plot and a painter on that plot, and passes
+`Paint`, `Resize`, `MouseMove` and `CM_MOUSELEAVE` on to the painter. It maps the view's
+`OnRepaintRequest` to `Invalidate`, so the control repaints on `Plot.OnChanged`, and re-fires
+the view's `OnDataPointHover` with the control as `Sender`. The protected
+`RenderChartToBackBuffer` passes the call on to `TChartPainter.RenderToBackBuffer`.
 
 ### 4.10 Chart4D.FMX.pas (Source\FMX)
 
@@ -697,6 +718,17 @@ type
   TFmxChartCanvas = class(TInterfacedObject, IChartCanvas)
   public
     constructor Create(const Canvas: FMX.Graphics.TCanvas);
+  end;
+
+  TChartPainter = class
+  public
+    constructor Create(const Plot: TChartPlot);   // not owned
+    destructor Destroy; override;
+    procedure Paint(const TargetCanvas: FMX.Graphics.TCanvas; const Width, Height: Single);
+    procedure RenderToBackBuffer(const Width, Height: Single);
+    procedure MouseMove(const X, Y: Single);
+    procedure MouseLeave;
+    property View: TChartView read ...;           // owned
   end;
 
   TChart4D = class(TControl)
@@ -714,13 +746,23 @@ type
 
 Text via `TTextLayout` (reliable measuring); `SaveToPng` via an offscreen
 `FMX.Graphics.TBitmap` (`BeginScene`/`EndScene`, `SaveToFile`), raising the same
-no-series `EChart4DException` as the VCL control. Repaint via
-`Plot.OnChanged` calling `Repaint`.
+no-series `EChart4DException` as the VCL control.
+
+`TChartPainter` (4.25) keeps its back buffer in an `FMX.Graphics.TBitmap` of
+`Round(Width)` x `Round(Height)` pixels and renders into it between `BeginScene` and
+`EndScene` through a `TFmxChartCanvas`, raising `EChart4DException` when the scene cannot
+start; `Paint` expects `TargetCanvas` to be inside a scene already, as it is during a
+control's `Paint`, and stretches the buffer to `Width` x `Height`. `TChart4D` owns its plot
+and a painter on that plot, and passes `Paint`, `Resize`, `MouseMove` and `DoMouseLeave` on
+to the painter. It maps the view's `OnRepaintRequest` to `Repaint`, so the control repaints
+on `Plot.OnChanged`, and re-fires the view's `OnDataPointHover` with the control as
+`Sender`. The protected `RenderChartToBackBuffer` passes the call on to
+`TChartPainter.RenderToBackBuffer`.
 
 ### 4.11 Hover interaction (tooltips)
 
-Hover interaction lives in the core units `Chart4D.Tooltip.pas` and `Chart4D.Hover.pas`
-plus the declarations below in existing units.
+Hover interaction lives in the core units `Chart4D.Tooltip.pas`, `Chart4D.Hover.pas` and
+`Chart4D.View.pas` (4.25) plus the declarations below in existing units.
 
 In `Chart4D.Types.pas`:
 
@@ -802,12 +844,16 @@ Both controls (`Chart4D.VCL.pas`, `Chart4D.FMX.pas`):
   paint pass draws the tooltip last via `TChartTooltip.Draw`.
 - Mouse leave clears the hover state and repaints.
 - `SaveToPng` never draws tooltips.
-- Both controls hold that state in a `TChartHoverState` (`Chart4D.Hover.pas`), which owns
-  the hit map, the hovered point, and the rule for whether a pointer move changed it.
-  `MoveTo` and `Leave` return whether anything changed, which is the only moment a control
-  fires `OnDataPointHover` and repaints. The rule lives in the RTL-only core so the VCL and
-  FMX controls cannot drift apart on it; only `Invalidate` versus `Repaint` differs.
-- Both core units are part of `Chart4D_R.dpk`/`.dproj`.
+- Both controls delegate all of this to a `TChartView` (`Chart4D.View.pas`, 4.25) through
+  their framework's `TChartPainter`. The view holds a `TChartHoverState`
+  (`Chart4D.Hover.pas`), which owns the hit map, the hovered point, and the rule for whether
+  a pointer move changed it. `MoveTo` and `Leave` return whether anything changed, which is
+  the only moment the view fires `OnDataPointHover` and requests a repaint. The rule and
+  its use live in the RTL-only core so the VCL and FMX controls cannot drift apart on it;
+  only the back buffer, the canvas adapter, and `Invalidate` versus `Repaint` differ.
+- `ShowTooltips` reads and writes `View.ShowTooltips`; the control's `OnDataPointHover` is
+  fired with the control, not the view, as `Sender`.
+- The three core units are part of `Chart4D_R.dpk`/`.dproj`.
 
 ### 4.12 Value labels
 
@@ -1351,6 +1397,64 @@ legend, hit-testing) except:
   for formatting it (e.g. `'Total: 1,234'`), the same plain-string convention
   `Source`/`Title`/`Subtitle` already use elsewhere in this library.
 
+### 4.25 Chart view and painters
+
+Showing a plot on screen, with a cached render, hover tracking and a tooltip, is split into a
+framework-neutral view in the core and one painter per framework. `TChart4D` is built on
+them, and an application can use a painter directly to paint a plot on a canvas it already
+owns (a `TPaintBox`, a custom control) without a `TChart4D`.
+
+`Chart4D.View.pas`:
+
+```pascal
+type
+  TChartView = class
+  public
+    constructor Create(const Plot: TChartPlot);   // not owned; assigns Plot.OnChanged
+    destructor Destroy; override;
+    function NeedsRender(const Width, Height: Single): Boolean;
+    procedure Render(const Canvas: IChartCanvas; const Width, Height: Single);
+    procedure DrawOverlay(const Canvas: IChartCanvas; const Width, Height: Single);
+    procedure Invalidate;
+    procedure MouseMove(const X, Y: Single);
+    procedure MouseLeave;
+    property Plot: TChartPlot read ...;
+    property ShowTooltips: Boolean read ... write ...;     // default True
+    property HasOverlay: Boolean read ...;
+    property OnDataPointHover: TChartHoverEvent read ... write ...;
+    property OnRepaintRequest: TNotifyEvent read ... write ...;
+  end;
+```
+
+- The view references its plot without owning it; the plot must outlive the view. The
+  constructor assigns `Plot.OnChanged`; the destructor clears it again only while it still
+  points at this view, so a handler assigned later survives.
+- A render stays valid until the plot changes, `Invalidate` is called, or `Render` is asked
+  for a different `Width`/`Height` than the last render. `NeedsRender` answers exactly that,
+  so a painter can skip preparing its surface. `Render` draws through
+  `TChartRenderer.Render` (4.8) and stores the hit map in the view's `TChartHoverState`
+  (4.11) only when `NeedsRender` is true, and draws nothing otherwise.
+- `DrawOverlay` draws `TChartTooltip.Draw` (4.11) with `Plot.Style`, the hovered point and
+  `Plot.YAxis.LocaleName` when `HasOverlay` is true (`ShowTooltips` and a hovered point), and
+  nothing otherwise. It is meant for the screen canvas after the cached render has been
+  copied there, so the tooltip never ends up in the cache.
+- `MouseMove` and `MouseLeave` pass the pointer on to the hover state. When that reports a
+  change, the view fires `OnDataPointHover` (with the view as `Sender`) and then
+  `OnRepaintRequest`. A plot change marks the render stale and fires `OnRepaintRequest`
+  only. `Invalidate` fires nothing, for a caller that repaints anyway.
+- The view holds no pixels. The RTL has no bitmap class and `IChartCanvas` has no bitmap
+  drawing, so the back buffer and the copy to screen stay in the painters.
+
+`TChartPainter` (declared in `Chart4D.VCL.pas`, 4.9, and in `Chart4D.FMX.pas`, 4.10, with the
+same shape) owns a `TChartView` on a caller-supplied plot and the framework's back buffer.
+`Paint(TargetCanvas, Width, Height)` runs four steps in order: resize the back buffer
+(which invalidates the view when the size actually changed), render into it through the
+view when `View.NeedsRender` is true, copy it to `TargetCanvas` at the origin, and let the
+view draw its overlay on `TargetCanvas`. `RenderToBackBuffer` renders into the back buffer
+unconditionally. `MouseMove` and `MouseLeave` pass the pointer on to the view. The caller
+maps `View.OnRepaintRequest` to its framework's repaint and frees the painter before the
+plot.
+
 ## 5. Tests (Tests\, DUnitX)
 
 Console project `Chart4D.Tests.dpr` + `build.bat` (dcc32; the RAD Studio location is
@@ -1386,6 +1490,16 @@ read from the `BDS` environment variable, defaulting to
   sector target (4.23) is found by `FindTarget` when the point falls between its inner
   and outer radius and within its angular span, including a case straddling the 0/360
   wraparound, and misses when outside either bound.
+- `Chart4D.View.Tests.pas`: against a `TRecordingCanvas`, `TChartView.Render` (4.25) draws on
+  the first call, draws nothing while the last render is still valid, and draws again after
+  a plot change, a size change or `Invalidate`; a plot change requests a repaint without a
+  hover event, and `Invalidate` requests nothing; `MouseMove` onto a data point fires
+  `OnDataPointHover` (with the view as `Sender`) and one repaint request, and fires nothing
+  when moving within that point, before the first render, or with `ShowTooltips` off;
+  `MouseLeave` fires a miss and a repaint request only when something was hovered;
+  `DrawOverlay` draws nothing when nothing is hovered or `ShowTooltips` is off, and the
+  highlight, box and series name when a point is hovered; destroying the view clears
+  `Plot.OnChanged`, but leaves a handler assigned after the view alone.
 - `Chart4D.Axis.Tests.pas` also covers: the `LocaleName` overload of `FormatValue` against at
   least one non-invariant locale, and that the 2-argument overload's output is unchanged
   (4.14); `LogBreaks` against a known span (e.g. `LogBreaks(5, 3000, 10) =

@@ -41,6 +41,7 @@ uses
   Chart4D.Renderer in '..\..\Source\Chart4D.Renderer.pas',
   Chart4D.Tooltip in '..\..\Source\Chart4D.Tooltip.pas',
   Chart4D.Hover in '..\..\Source\Chart4D.Hover.pas',
+  Chart4D.View in '..\..\Source\Chart4D.View.pas',
   Chart4D.FMX in '..\..\Source\FMX\Chart4D.FMX.pas',
   Chart4DDemo.Catalog in '..\..\Examples\Common\Chart4DDemo.Catalog.pas';
 

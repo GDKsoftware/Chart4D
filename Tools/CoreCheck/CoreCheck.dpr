@@ -29,7 +29,9 @@ uses
   Chart4D.Canvas.Interfaces in '..\..\Source\Chart4D.Canvas.Interfaces.pas',
   Chart4D.Plot in '..\..\Source\Chart4D.Plot.pas',
   Chart4D.Renderer in '..\..\Source\Chart4D.Renderer.pas',
-  Chart4D.Tooltip in '..\..\Source\Chart4D.Tooltip.pas';
+  Chart4D.Tooltip in '..\..\Source\Chart4D.Tooltip.pas',
+  Chart4D.Hover in '..\..\Source\Chart4D.Hover.pas',
+  Chart4D.View in '..\..\Source\Chart4D.View.pas';
 
 type
   /// <summary>
@@ -280,6 +282,50 @@ begin
   end;
 end;
 
+procedure CheckView;
+var
+  Canvas: IChartCanvas;
+begin
+  Canvas := TNullChartCanvas.Create;
+
+  const BarPlot = TChartPlot.Create;
+  try
+    BarPlot.Kind := TChartKind.Bar;
+    BarPlot.Categories := ['A', 'B', 'C'];
+    BarPlot.AddSeries('Count', [3, 2, 5]);
+
+    var HitMap: TArray<TChartHitTarget>;
+    TChartRenderer.Render(BarPlot, Canvas, 640, 450, HitMap);
+
+    const View = TChartView.Create(BarPlot);
+    try
+      View.Render(Canvas, 640, 450);
+      if View.NeedsRender(640, 450) then
+        raise EChart4DException.Create('TChartView still needs a render right after rendering');
+
+      BarPlot.Title := 'Counts';
+      if not View.NeedsRender(640, 450) then
+        raise EChart4DException.Create('TChartView does not need a render after a plot change');
+
+      View.Render(Canvas, 640, 450);
+      View.MouseMove(HitMap[1].Bounds.CenterPoint.X, HitMap[1].Bounds.CenterPoint.Y);
+      if not View.HasOverlay then
+        raise EChart4DException.Create('TChartView has no overlay while a bar is hovered');
+
+      View.DrawOverlay(Canvas, 640, 450);
+      View.MouseLeave;
+      if View.HasOverlay then
+        raise EChart4DException.Create('TChartView still has an overlay after the pointer left');
+    finally
+      View.Free;
+    end;
+
+    Writeln('TChartView (Render, NeedsRender, MouseMove, DrawOverlay, MouseLeave): OK');
+  finally
+    BarPlot.Free;
+  end;
+end;
+
 begin
   try
     const Style = TChartStyle.Default;
@@ -311,6 +357,7 @@ begin
 
     CheckRenderer;
     CheckTooltip;
+    CheckView;
 
     Writeln('CoreCheck: all checks passed');
     ExitCode := 0;
