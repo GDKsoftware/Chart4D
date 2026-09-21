@@ -52,6 +52,7 @@ contains
   Chart4D.Plot in '..\..\Source\Chart4D.Plot.pas',
   Chart4D.Renderer in '..\..\Source\Chart4D.Renderer.pas',
   Chart4D.Tooltip in '..\..\Source\Chart4D.Tooltip.pas',
-  Chart4D.Hover in '..\..\Source\Chart4D.Hover.pas';
+  Chart4D.Hover in '..\..\Source\Chart4D.Hover.pas',
+  Chart4D.View in '..\..\Source\Chart4D.View.pas';
 
 end.

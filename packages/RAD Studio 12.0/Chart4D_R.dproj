@@ -96,6 +96,7 @@
         <DCCReference Include="..\..\Source\Chart4D.Renderer.pas"/>
         <DCCReference Include="..\..\Source\Chart4D.Tooltip.pas"/>
         <DCCReference Include="..\..\Source\Chart4D.Hover.pas"/>
+        <DCCReference Include="..\..\Source\Chart4D.View.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

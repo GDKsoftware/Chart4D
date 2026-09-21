@@ -12,7 +12,8 @@ unit Chart4D.FMX;
 
 /// <summary>
 /// The FireMonkey adapter: <c>TFmxChartCanvas</c> implements <c>IChartCanvas</c> on top
-/// of <c>FMX.Graphics.TCanvas</c>, and <c>TChart4D</c> is the FMX control that owns a
+/// of <c>FMX.Graphics.TCanvas</c>, <c>TChartPainter</c> paints a plot through a back
+/// buffer onto any FMX canvas, and <c>TChart4D</c> is the FMX control that owns a
 /// <c>TChartPlot</c>, repaints on <c>OnChanged</c>, and exports PNG files.
 /// </summary>
 
@@ -32,10 +33,9 @@ uses
   Chart4D.Types,
   Chart4D.Consts,
   Chart4D.Canvas.Interfaces,
-  Chart4D.Hover,
   Chart4D.Plot,
   Chart4D.Renderer,
-  Chart4D.Tooltip;
+  Chart4D.View;
 
 type
   /// <summary>
@@ -85,6 +85,71 @@ type
   end;
 
   /// <summary>
+  /// Paints a <c>TChartPlot</c> onto an FMX canvas the caller owns, such as the canvas of
+  /// a <c>TPaintBox</c> or of a custom control. Keeps the rendered chart in an offscreen
+  /// <c>TBitmap</c> so a repaint only re-renders when the plot or the size changed, and
+  /// draws the hover tooltip on top. The framework-neutral decisions live in the owned
+  /// <c>TChartView</c>.
+  /// </summary>
+  TChartPainter = class
+  private
+    FView: TChartView;
+    FBackBuffer: TBitmap;
+    FPaintedBounds: TRectF;
+
+    procedure ResizeBackBuffer(const Width, Height: Single);
+    procedure DrawOverlay(const TargetCanvas: FMX.Graphics.TCanvas; const Bounds: TRectF);
+
+  public
+    /// <summary>
+    /// Creates a painter for <c>Plot</c>. The painter does not own <c>Plot</c>, which must
+    /// outlive it, and takes over <c>Plot.OnChanged</c> (see <c>TChartView.Create</c>).
+    /// </summary>
+    constructor Create(const Plot: TChartPlot);
+    /// <summary>Destroys the painter, its view and its back buffer, but not the plot.</summary>
+    destructor Destroy; override;
+
+    /// <summary>
+    /// Paints the plot at <c>Width</c> x <c>Height</c> with its top-left corner at the
+    /// origin of <c>TargetCanvas</c>. Same as <c>Paint</c> with bounds
+    /// <c>(0, 0, Width, Height)</c>.
+    /// </summary>
+    /// <exception cref="EChart4DException">Raised when <c>Width</c> or <c>Height</c> is
+    /// negative, or when a scene cannot be started on the back buffer.</exception>
+    procedure Paint(const TargetCanvas: FMX.Graphics.TCanvas; const Width, Height: Single); overload;
+    /// <summary>
+    /// Paints the plot into <c>Bounds</c> on <c>TargetCanvas</c>, which must be inside a
+    /// scene (as it is during a control's <c>Paint</c> or a <c>TPaintBox.OnPaint</c>), laid
+    /// out for the size of <c>Bounds</c>: resizes the back buffer, re-renders it when the view
+    /// says so, copies it into <c>Bounds</c>, then draws the hover tooltip there. Remembers
+    /// <c>Bounds</c>, so <c>MouseMove</c> takes <c>TargetCanvas</c> coordinates.
+    /// </summary>
+    /// <exception cref="EChart4DException">Raised when <c>Bounds</c> has a negative width or
+    /// height, or when a scene cannot be started on the back buffer.</exception>
+    procedure Paint(const TargetCanvas: FMX.Graphics.TCanvas; const Bounds: TRectF); overload;
+    /// <summary>
+    /// Renders the plot into the back buffer at <c>Width</c> x <c>Height</c> now, even when
+    /// the last render is still valid, and refreshes the hit map.
+    /// </summary>
+    /// <exception cref="EChart4DException">Raised when a scene cannot be started on the back buffer.</exception>
+    procedure RenderToBackBuffer(const Width, Height: Single);
+    /// <summary>
+    /// Passes a pointer move on to the view. <c>X</c> and <c>Y</c> are in the coordinates of
+    /// the canvas last painted on; a position outside the last painted bounds counts as
+    /// leaving the chart.
+    /// </summary>
+    procedure MouseMove(const X, Y: Single);
+    /// <summary>Passes the pointer leaving the painted area on to the view.</summary>
+    procedure MouseLeave;
+
+    /// <summary>
+    /// The owned view: <c>ShowTooltips</c>, <c>OnDataPointHover</c>, and the
+    /// <c>OnRepaintRequest</c> the caller maps to <c>Repaint</c>.
+    /// </summary>
+    property View: TChartView read FView;
+  end;
+
+  /// <summary>
   /// An FMX control that owns a <c>TChartPlot</c> and renders it with
   /// <c>TChartRenderer</c> through <c>TFmxChartCanvas</c>. Repaints itself whenever the
   /// plot changes, tracks the hovered data point on mouse move, and can export the
@@ -93,23 +158,19 @@ type
   TChart4D = class(TControl)
   private
     FPlot: TChartPlot;
-    FHover: TChartHoverState;
+    FPainter: TChartPainter;
     FOnDataPointHover: TChartHoverEvent;
-    FBackBuffer: TBitmap;
-    FBackBufferValid: Boolean;
 
     procedure RenderForExport(const Canvas: FMX.Graphics.TCanvas; const Width, Height: Single);
-    procedure EnsureBackBuffer;
-    procedure DrawTooltipOverlay;
-    procedure PlotChanged(Sender: TObject);
-    procedure HoverChanged;
+    procedure ViewDataPointHover(Sender: TObject; const Info: TChartHitInfo);
+    procedure ViewRepaintRequest(Sender: TObject);
     function GetShowTooltips: Boolean;
     procedure SetShowTooltips(const Value: Boolean);
 
   protected
     /// <summary>
-    /// Re-renders the plot into <c>FBackBuffer</c> and refreshes the stored hit map.
-    /// Called only when the buffer is invalid.
+    /// Re-renders the plot into the painter's back buffer and refreshes the stored hit
+    /// map. <c>Paint</c> does this on its own whenever the buffer is invalid.
     /// </summary>
     procedure RenderChartToBackBuffer;
     /// <summary>Blits the cached back buffer, re-rendering it first only when the plot
@@ -325,105 +386,161 @@ begin
   end;
 end;
 
-constructor TChart4D.Create(AOwner: TComponent);
+constructor TChartPainter.Create(const Plot: TChartPlot);
 begin
-  inherited Create(AOwner);
-  FPlot := TChartPlot.Create;
-  FPlot.OnChanged := PlotChanged;
-  FHover := TChartHoverState.Create;
-  HitTest := True;
+  inherited Create;
+  FView := TChartView.Create(Plot);
   FBackBuffer := TBitmap.Create;
-  SetBounds(0, 0, DefaultExportWidth, DefaultExportHeight);
 end;
 
-destructor TChart4D.Destroy;
+destructor TChartPainter.Destroy;
 begin
-  FHover.Free;
   FBackBuffer.Free;
-  FPlot.Free;
+  FView.Free;
   inherited Destroy;
 end;
 
-function TChart4D.GetShowTooltips: Boolean;
+procedure TChartPainter.Paint(const TargetCanvas: FMX.Graphics.TCanvas; const Width, Height: Single);
 begin
-  Result := FHover.Enabled;
+  Paint(TargetCanvas, RectF(0, 0, Width, Height));
 end;
 
-procedure TChart4D.SetShowTooltips(const Value: Boolean);
+procedure TChartPainter.Paint(const TargetCanvas: FMX.Graphics.TCanvas; const Bounds: TRectF);
 begin
-  FHover.Enabled := Value;
+  const HasNegativeSize = (Bounds.Width < 0) or (Bounds.Height < 0);
+  if HasNegativeSize then
+    raise EChart4DException.CreateFmt(SPaintBoundsNegativeSize, [Bounds.Width, Bounds.Height]);
+
+  FPaintedBounds := Bounds;
+  ResizeBackBuffer(Bounds.Width, Bounds.Height);
+
+  if FView.NeedsRender(Bounds.Width, Bounds.Height) then
+    RenderToBackBuffer(Bounds.Width, Bounds.Height);
+
+  TargetCanvas.DrawBitmap(FBackBuffer, RectF(0, 0, FBackBuffer.Width, FBackBuffer.Height), Bounds, 1.0);
+  DrawOverlay(TargetCanvas, Bounds);
 end;
 
-procedure TChart4D.Paint;
+procedure TChartPainter.RenderToBackBuffer(const Width, Height: Single);
 begin
-  EnsureBackBuffer;
-  Canvas.DrawBitmap(FBackBuffer, RectF(0, 0, FBackBuffer.Width, FBackBuffer.Height),
-                    RectF(0, 0, Width, Height), 1.0);
-  DrawTooltipOverlay;
-end;
+  ResizeBackBuffer(Width, Height);
+  FView.Invalidate;
 
-procedure TChart4D.Resize;
-begin
-  inherited Resize;
-  FBackBufferValid := False;
-end;
-
-procedure TChart4D.EnsureBackBuffer;
-begin
-  const SizeChanged = (FBackBuffer.Width <> Round(Width)) or (FBackBuffer.Height <> Round(Height));
-  if SizeChanged then
-  begin
-    FBackBuffer.SetSize(Round(Width), Round(Height));
-    FBackBufferValid := False;
-  end;
-
-  if not FBackBufferValid then
-  begin
-    RenderChartToBackBuffer;
-    FBackBufferValid := True;
-  end;
-end;
-
-procedure TChart4D.RenderChartToBackBuffer;
-begin
   const SceneStarted = FBackBuffer.Canvas.BeginScene;
   if not SceneStarted then
     raise EChart4DException.Create(SFailedToBeginBackBufferScene);
 
   try
     const ChartCanvas: IChartCanvas = TFmxChartCanvas.Create(FBackBuffer.Canvas);
-
-    var HitMap: TArray<TChartHitTarget>;
-    TChartRenderer.Render(FPlot, ChartCanvas, Width, Height, HitMap);
-    FHover.HitMap := HitMap;
+    FView.Render(ChartCanvas, Width, Height);
   finally
     FBackBuffer.Canvas.EndScene;
   end;
 end;
 
-procedure TChart4D.DrawTooltipOverlay;
+procedure TChartPainter.MouseMove(const X, Y: Single);
 begin
-  if not FHover.IsVisible then
+  { Hit targets such as line points have a radius, so a pointer just outside the chart
+    could still hit one; outside the bounds is outside the chart, whatever it is near. }
+  const IsInsideChart = FPaintedBounds.Contains(PointF(X, Y));
+  if not IsInsideChart then
+  begin
+    FView.MouseLeave;
+    Exit;
+  end;
+
+  FView.MouseMove(X - FPaintedBounds.Left, Y - FPaintedBounds.Top);
+end;
+
+procedure TChartPainter.MouseLeave;
+begin
+  FView.MouseLeave;
+end;
+
+procedure TChartPainter.ResizeBackBuffer(const Width, Height: Single);
+begin
+  const BufferWidth = Round(Width);
+  const BufferHeight = Round(Height);
+  const SizeChanged = (FBackBuffer.Width <> BufferWidth) or (FBackBuffer.Height <> BufferHeight);
+  if not SizeChanged then
     Exit;
 
-  const ChartCanvas: IChartCanvas = TFmxChartCanvas.Create(Canvas);
-  TChartTooltip.Draw(ChartCanvas, FPlot.Style, FHover.Info, Width, Height, FPlot.YAxis.LocaleName);
+  FBackBuffer.SetSize(BufferWidth, BufferHeight);
+  FView.Invalidate;
+end;
+
+procedure TChartPainter.DrawOverlay(const TargetCanvas: FMX.Graphics.TCanvas; const Bounds: TRectF);
+begin
+  if not FView.HasOverlay then
+    Exit;
+
+  const SavedState = TargetCanvas.SaveState;
+  try
+    { A tooltip pushed against the chart edge strokes its border across that edge; on a
+      canvas shared with other content that half pixel must not land outside Bounds. }
+    TargetCanvas.IntersectClipRect(Bounds);
+    TargetCanvas.MultiplyMatrix(TMatrix.CreateTranslation(Bounds.Left, Bounds.Top));
+    const ChartCanvas: IChartCanvas = TFmxChartCanvas.Create(TargetCanvas);
+    FView.DrawOverlay(ChartCanvas, Bounds.Width, Bounds.Height);
+  finally
+    TargetCanvas.RestoreState(SavedState);
+  end;
+end;
+
+constructor TChart4D.Create(AOwner: TComponent);
+begin
+  inherited Create(AOwner);
+  FPlot := TChartPlot.Create;
+  FPainter := TChartPainter.Create(FPlot);
+  FPainter.View.OnDataPointHover := ViewDataPointHover;
+  FPainter.View.OnRepaintRequest := ViewRepaintRequest;
+  HitTest := True;
+  SetBounds(0, 0, DefaultExportWidth, DefaultExportHeight);
+end;
+
+destructor TChart4D.Destroy;
+begin
+  FPainter.Free;
+  FPlot.Free;
+  inherited Destroy;
+end;
+
+function TChart4D.GetShowTooltips: Boolean;
+begin
+  Result := FPainter.View.ShowTooltips;
+end;
+
+procedure TChart4D.SetShowTooltips(const Value: Boolean);
+begin
+  FPainter.View.ShowTooltips := Value;
+end;
+
+procedure TChart4D.Paint;
+begin
+  FPainter.Paint(Canvas, Width, Height);
+end;
+
+procedure TChart4D.Resize;
+begin
+  inherited Resize;
+  FPainter.View.Invalidate;
+end;
+
+procedure TChart4D.RenderChartToBackBuffer;
+begin
+  FPainter.RenderToBackBuffer(Width, Height);
 end;
 
 procedure TChart4D.MouseMove(Shift: TShiftState; X, Y: Single);
 begin
   inherited MouseMove(Shift, X, Y);
-
-  if FHover.MoveTo(X, Y) then
-    HoverChanged;
+  FPainter.MouseMove(X, Y);
 end;
 
 procedure TChart4D.DoMouseLeave;
 begin
   inherited DoMouseLeave;
-
-  if FHover.Leave then
-    HoverChanged;
+  FPainter.MouseLeave;
 end;
 
 procedure TChart4D.SaveToPng(const FilePath: string;
@@ -452,23 +569,20 @@ begin
   end;
 end;
 
-procedure TChart4D.PlotChanged(Sender: TObject);
-begin
-  FBackBufferValid := False;
-  Repaint;
-end;
-
 procedure TChart4D.RenderForExport(const Canvas: FMX.Graphics.TCanvas; const Width, Height: Single);
 begin
   const ChartCanvas: IChartCanvas = TFmxChartCanvas.Create(Canvas);
   TChartRenderer.Render(FPlot, ChartCanvas, Width, Height);
 end;
 
-procedure TChart4D.HoverChanged;
+procedure TChart4D.ViewDataPointHover(Sender: TObject; const Info: TChartHitInfo);
 begin
   if Assigned(FOnDataPointHover) then
-    FOnDataPointHover(Self, FHover.Info);
+    FOnDataPointHover(Self, Info);
+end;
 
+procedure TChart4D.ViewRepaintRequest(Sender: TObject);
+begin
   Repaint;
 end;
 

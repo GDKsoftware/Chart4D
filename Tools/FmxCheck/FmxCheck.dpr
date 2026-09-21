@@ -29,6 +29,7 @@ uses
   System.SysUtils,
   System.IOUtils,
   System.Math,
+  System.Types,
   System.UITypes,
   FMX.Graphics,
   Chart4D.Types in '..\..\Source\Chart4D.Types.pas',
@@ -41,6 +42,7 @@ uses
   Chart4D.Renderer in '..\..\Source\Chart4D.Renderer.pas',
   Chart4D.Tooltip in '..\..\Source\Chart4D.Tooltip.pas',
   Chart4D.Hover in '..\..\Source\Chart4D.Hover.pas',
+  Chart4D.View in '..\..\Source\Chart4D.View.pas',
   Chart4D.FMX in '..\..\Source\FMX\Chart4D.FMX.pas',
   Chart4DDemo.Catalog in '..\..\Examples\Common\Chart4DDemo.Catalog.pas';
 
@@ -615,6 +617,205 @@ begin
   end;
 end;
 
+/// <summary>
+/// Whether two colors are equal up to a rounding step per channel. Under a translated
+/// canvas matrix FMX rasterises the same antialiased shape with an occasional
+/// one-level difference in a channel; a misplaced shape differs by far more.
+/// </summary>
+function ColorsMatchWithinRounding(const Left, Right: TAlphaColor): Boolean;
+const
+  MaxChannelDifference = 2;
+begin
+  const LeftColor = TAlphaColorRec(Left);
+  const RightColor = TAlphaColorRec(Right);
+  Result := (Abs(LeftColor.A - RightColor.A) <= MaxChannelDifference) and
+            (Abs(LeftColor.R - RightColor.R) <= MaxChannelDifference) and
+            (Abs(LeftColor.G - RightColor.G) <= MaxChannelDifference) and
+            (Abs(LeftColor.B - RightColor.B) <= MaxChannelDifference);
+end;
+
+/// <summary>
+/// Counts the pixels of <c>Target</c> inside <c>Bounds</c> that differ, beyond rounding,
+/// from the pixel of <c>Reference</c> at the same offset within <c>Bounds</c>, and the
+/// pixels outside <c>Bounds</c> that no longer hold <c>MarkerColor</c> exactly.
+/// </summary>
+procedure CountOffsetPaintDifferences(const Target: TBitmap; const Bounds: TRect; const Reference: TBitmap;
+                                      const MarkerColor: TAlphaColor;
+                                      out DifferingInside, ChangedOutside: Integer);
+begin
+  DifferingInside := 0;
+  ChangedOutside := 0;
+
+  var TargetData, ReferenceData: TBitmapData;
+  if not Target.Map(TMapAccess.Read, TargetData) then
+    raise EChart4DException.Create('Could not map the offset paint for comparison');
+
+  try
+    if not Reference.Map(TMapAccess.Read, ReferenceData) then
+      raise EChart4DException.Create('Could not map the origin paint for comparison');
+
+    try
+      for var Y := 0 to Target.Height - 1 do
+      begin
+        for var X := 0 to Target.Width - 1 do
+        begin
+          const Pixel = TargetData.GetPixel(X, Y);
+          const IsInside = Bounds.Contains(TPoint.Create(X, Y));
+          if IsInside and not ColorsMatchWithinRounding(Pixel, ReferenceData.GetPixel(X - Bounds.Left, Y - Bounds.Top)) then
+            Inc(DifferingInside);
+          if (not IsInside) and (Pixel <> MarkerColor) then
+            Inc(ChangedOutside);
+        end;
+      end;
+    finally
+      Reference.Unmap(ReferenceData);
+    end;
+  finally
+    Target.Unmap(TargetData);
+  end;
+end;
+
+/// <summary>Paints <c>Painter</c> into <c>Bounds</c> on <c>Bitmap</c>, inside a scene, after filling the bitmap with <c>FillColor</c>.</summary>
+procedure PaintInScene(const Painter: TChartPainter; const Bitmap: TBitmap; const Bounds: TRectF;
+                       const FillColor: TAlphaColor);
+begin
+  const SceneStarted = Bitmap.Canvas.BeginScene;
+  if not SceneStarted then
+    raise EChart4DException.Create('Failed to begin an FMX scene for the painter bounds check');
+
+  try
+    Bitmap.Canvas.Clear(FillColor);
+    Painter.Paint(Bitmap.Canvas, Bounds);
+  finally
+    Bitmap.Canvas.EndScene;
+  end;
+end;
+
+/// <summary>
+/// Proves that <c>TChartPainter</c> paints into bounds away from the canvas origin. The same
+/// painter paints once at the origin of a bitmap of the chart's size and once into offset
+/// bounds on a larger bitmap filled with a marker color. The offset region must match the
+/// origin paint pixel for pixel, at rest and with the tooltip showing, which proves the
+/// back buffer copy and the overlay translation; nothing outside the bounds may change.
+/// Pointer positions are canvas coordinates, so hovering the offset target must find it
+/// and moving outside the bounds must count as leaving.
+/// </summary>
+procedure VerifyPainterBounds;
+const
+  OffsetX = 70;
+  OffsetY = 40;
+  MarkerColor = TAlphaColors.Fuchsia;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    BuildTooltipSamplePlot(Plot);
+    const Bounds = TRect.Create(OffsetX, OffsetY, OffsetX + DefaultExportWidth, OffsetY + DefaultExportHeight);
+    const OriginBounds = RectF(0, 0, DefaultExportWidth, DefaultExportHeight);
+
+    var HitMap: TArray<TChartHitTarget>;
+    const HitMapBitmap = TBitmap.Create(DefaultExportWidth, DefaultExportHeight);
+    try
+      const SceneStarted = HitMapBitmap.Canvas.BeginScene;
+      if not SceneStarted then
+        raise EChart4DException.Create('Failed to begin an FMX scene for the painter bounds check');
+
+      try
+        const ChartCanvas: IChartCanvas = TFmxChartCanvas.Create(HitMapBitmap.Canvas);
+        TChartRenderer.Render(Plot, ChartCanvas, DefaultExportWidth, DefaultExportHeight, HitMap);
+      finally
+        HitMapBitmap.Canvas.EndScene;
+      end;
+    finally
+      HitMapBitmap.Free;
+    end;
+
+    const Painter = TChartPainter.Create(Plot);
+    const Recorder = THoverRecorder.Create;
+    const Reference = TBitmap.Create(DefaultExportWidth, DefaultExportHeight);
+    const Target = TBitmap.Create(Bounds.Right + OffsetX, Bounds.Bottom + OffsetY);
+    try
+      Painter.View.OnDataPointHover := Recorder.HandleHover;
+
+      PaintInScene(Painter, Reference, OriginBounds, MarkerColor);
+      PaintInScene(Painter, Target, TRectF.Create(Bounds), MarkerColor);
+
+      var DifferingPixels, ChangedOutside: Integer;
+      CountOffsetPaintDifferences(Target, Bounds, Reference, MarkerColor, DifferingPixels, ChangedOutside);
+      if DifferingPixels <> 0 then
+        raise EChart4DException.CreateFmt(
+          'painting into offset bounds should reproduce the origin paint, but %d pixels differ', [DifferingPixels]);
+      if ChangedOutside <> 0 then
+        raise EChart4DException.CreateFmt(
+          'painting into offset bounds changed %d pixels outside those bounds', [ChangedOutside]);
+
+      Writeln('FmxCheck: the painter paints into offset bounds and leaves the rest of the canvas alone');
+
+      const HoveredTarget = HitMap[High(HitMap)];
+      var TargetPoint := HoveredTarget.Bounds.CenterPoint;
+      const IsCircularTarget = (HoveredTarget.Radius > 0);
+      if IsCircularTarget then
+        TargetPoint := HoveredTarget.Center;
+
+      const HoverX = OffsetX + TargetPoint.X;
+      const HoverY = OffsetY + TargetPoint.Y;
+      Painter.MouseMove(HoverX, HoverY);
+      if (Recorder.EventCount <> 1) or (not Recorder.LastInfo.HasHit) then
+        raise EChart4DException.CreateFmt(
+          'hovering the offset target should report one hit, but %d events fired', [Recorder.EventCount]);
+      if Recorder.LastInfo.CategoryLabel <> HoveredTarget.Info.CategoryLabel then
+        raise EChart4DException.CreateFmt(
+          'hovering at the offset reported category "%s" but the target there is "%s"',
+          [Recorder.LastInfo.CategoryLabel, HoveredTarget.Info.CategoryLabel]);
+
+      const RestingReference = TBitmap.Create;
+      try
+        RestingReference.Assign(Reference);
+        PaintInScene(Painter, Reference, OriginBounds, MarkerColor);
+        if CountDifferingPixels(RestingReference, Reference) = 0 then
+          raise EChart4DException.Create('hovering a bar should draw a tooltip, but the origin paint is unchanged');
+      finally
+        RestingReference.Free;
+      end;
+
+      PaintInScene(Painter, Target, TRectF.Create(Bounds), MarkerColor);
+      CountOffsetPaintDifferences(Target, Bounds, Reference, MarkerColor, DifferingPixels, ChangedOutside);
+      if DifferingPixels <> 0 then
+        raise EChart4DException.CreateFmt(
+          'the tooltip in offset bounds should match the one at the origin, but %d pixels differ', [DifferingPixels]);
+      if ChangedOutside <> 0 then
+        raise EChart4DException.CreateFmt(
+          'the tooltip in offset bounds changed %d pixels outside those bounds', [ChangedOutside]);
+
+      Writeln('FmxCheck: hovering in offset bounds reports the target and draws its tooltip at the offset');
+
+      Painter.MouseMove(OffsetX - 1, HoverY);
+      if (Recorder.EventCount <> 2) or Recorder.LastInfo.HasHit then
+        raise EChart4DException.Create('moving outside the painted bounds should report leaving the chart');
+
+      Writeln('FmxCheck: moving outside the painted bounds counts as leaving the chart');
+
+      var RaisedOnNegativeSize := False;
+      try
+        PaintInScene(Painter, Target, RectF(OffsetX, OffsetY, OffsetX - 1, OffsetY + 1), MarkerColor);
+      except
+        on E: EChart4DException do
+          RaisedOnNegativeSize := True;
+      end;
+      if not RaisedOnNegativeSize then
+        raise EChart4DException.Create('painting into bounds of negative width should raise');
+
+      Writeln('FmxCheck: painting into bounds of negative size raises');
+    finally
+      Target.Free;
+      Reference.Free;
+      Recorder.Free;
+      Painter.Free;
+    end;
+  finally
+    Plot.Free;
+  end;
+end;
+
 procedure VerifyExportedFile(const ExportPath: string);
 begin
   const FileWasCreated = TFile.Exists(ExportPath);
@@ -653,6 +854,7 @@ begin
     VerifyEveryChartKindDraws(OutputDir);
     VerifyControlHoverChain(OutputDir);
     VerifyBackBufferCaching;
+    VerifyPainterBounds;
 
     Writeln('FmxCheck: all checks passed');
     ExitCode := 0;
