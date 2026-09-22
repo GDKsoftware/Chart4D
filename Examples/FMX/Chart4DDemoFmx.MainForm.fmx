@@ -1,0 +1,105 @@
+object MainForm: TMainForm
+  Left = 0
+  Top = 0
+  Caption = 'Chart4D FMX Demo'
+  ClientHeight = 700
+  ClientWidth = 1560
+  Position = ScreenCenter
+  FormFactor.Width = 320
+  FormFactor.Height = 480
+  FormFactor.Devices = [Desktop]
+  OnCreate = FormCreate
+  DesignerMasterStyle = 0
+  object LayoutToolbar: TLayout
+    Align = Top
+    Size.Width = 1560.000000000000000000
+    Size.Height = 48.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 0
+    object ComboBoxSample: TComboBox
+      Position.X = 12.000000000000000000
+      Position.Y = 8.000000000000000000
+      Size.Width = 280.000000000000000000
+      Size.Height = 30.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 0
+      OnChange = ComboBoxSampleChange
+    end
+    object ButtonExportPng: TButton
+      Position.X = 304.000000000000000000
+      Position.Y = 8.000000000000000000
+      Size.Width = 120.000000000000000000
+      Size.Height = 30.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 1
+      Text = 'Export PNG'
+      OnClick = ButtonExportPngClick
+    end
+  end
+  object LayoutSide: TLayout
+    Align = Right
+    Padding.Left = 12.000000000000000000
+    Padding.Top = 12.000000000000000000
+    Padding.Right = 12.000000000000000000
+    Padding.Bottom = 12.000000000000000000
+    Position.X = 800.000000000000000000
+    Position.Y = 48.000000000000000000
+    Size.Width = 760.000000000000000000
+    Size.Height = 652.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 1
+    object LabelExplanation: TLabel
+      Align = Top
+      AutoSize = True
+      StyledSettings = [Family, Style, FontColor]
+      Margins.Bottom = 12.000000000000000000
+      Position.X = 12.000000000000000000
+      Position.Y = 12.000000000000000000
+      Size.Width = 736.000000000000000000
+      Size.Height = 20.000000000000000000
+      Size.PlatformDefault = False
+      TextSettings.Font.Size = 13.000000000000000000
+      TextSettings.VertAlign = Leading
+      TextSettings.WordWrap = True
+      TabOrder = 0
+    end
+    object MemoCode: TMemo
+      Align = Client
+      StyledSettings = [Style, FontColor]
+      Position.X = 12.000000000000000000
+      Position.Y = 44.000000000000000000
+      Size.Width = 736.000000000000000000
+      Size.Height = 596.000000000000000000
+      Size.PlatformDefault = False
+      TextSettings.Font.Family = 'Consolas'
+      TextSettings.Font.Size = 12.000000000000000000
+      TextSettings.WordWrap = False
+      ReadOnly = True
+      TabOrder = 1
+      Viewport.Width = 732.000000000000000000
+      Viewport.Height = 592.000000000000000000
+    end
+  end
+  object SplitterSide: TSplitter
+    Align = Right
+    Position.X = 796.000000000000000000
+    Position.Y = 48.000000000000000000
+    Size.Width = 4.000000000000000000
+    Size.Height = 652.000000000000000000
+    Size.PlatformDefault = False
+  end
+  object Chart: TChart4D
+    Align = Client
+    Position.Y = 48.000000000000000000
+    Size.Width = 796.000000000000000000
+    Size.Height = 652.000000000000000000
+    Size.PlatformDefault = False
+  end
+  object SaveDialogPng: TSaveDialog
+    DefaultExt = 'png'
+    FileName = 'chart4d-export.png'
+    Filter = 'PNG image (*.png)|*.png'
+    Left = 440
+    Top = 120
+  end
+end

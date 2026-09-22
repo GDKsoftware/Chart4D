@@ -13,8 +13,8 @@ program Chart4DDemoVcl;
 /// <summary>
 /// VCL demo application for Chart4D: lets the user switch between the examples in the
 /// shared catalogue (<c>Chart4DDemo.Catalog</c>), showing each one's explanation and
-/// source code beside the rendered chart, with a PNG export button. The main form is
-/// built entirely in code (<c>TForm.CreateNew</c>, no DFM).
+/// source code beside the rendered chart, with a PNG export button. The main form and its
+/// chart control come from the DFM.
 /// </summary>
 
 {$R ..\..\assets\Chart4D.res}

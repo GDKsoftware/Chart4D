@@ -13,8 +13,8 @@ program Chart4DDemoFmx;
 /// <summary>
 /// FMX demo application for Chart4D: lets the user switch between the examples in the
 /// shared catalogue (<c>Chart4DDemo.Catalog</c>), showing each one's explanation and
-/// source code beside the rendered chart, with a PNG export button. The main form is
-/// built entirely in code, without a form resource stream.
+/// source code beside the rendered chart, with a PNG export button. The main form and its
+/// chart control come from the FMX file.
 /// </summary>
 
 {$R ..\..\assets\Chart4D.res}
