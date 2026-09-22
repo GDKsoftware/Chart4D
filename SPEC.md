@@ -869,7 +869,8 @@ type
                          const Info: TChartHitInfo;
                          const Width, Height: Single;
                          const LocaleName: string = '';
-                         const Decimals: Integer = AutomaticDecimals); static;
+                         const Decimals: Integer = AutomaticDecimals;
+                         const UseThousandSeparator: Boolean = False); static;
   end;
 ```
 
@@ -878,9 +879,11 @@ is used to format `Info.Value` in
 `BuildLines` via the locale `TAxisScale.FormatValue` overload (4.14) instead of the
 invariant one; callers pass the hovered axis' `LocaleName` (typically `Plot.YAxis
 .LocaleName`). `Decimals` follows it and defaults to `AutomaticDecimals`; it fixes how
-many decimals `Info.Value` is shown with (4.27), and callers pass the same axis' own
-`Decimals` (`TChartView.DrawOverlay` passes `Plot.YAxis.LocaleName` and
-`Plot.YAxis.Decimals`). `TChartHitTarget` carries sector fields for `Pie`/`Donut` hit-testing, and
+many decimals `Info.Value` is shown with (4.27). `UseThousandSeparator` follows that and
+defaults to `False`; it groups that value's digits. The three are the value axis' own
+number formatting, and a caller passes all three from that one axis, so a tooltip reads
+the way the axis beside it does: `TChartView.DrawOverlay` passes `Plot.YAxis.LocaleName`,
+`Plot.YAxis.Decimals` and `Plot.YAxis.UseThousandSeparator`. `TChartHitTarget` carries sector fields for `Pie`/`Donut` hit-testing, and
 `TChartTooltip`'s private `TargetContainsPoint` has a branch for them; both are
 specified in 4.23, the section that introduces sectors, rather than here.
 
@@ -1592,7 +1595,9 @@ it changes:
 - Axis break labels, through `BuildLabels` (4.5), per axis.
 - Value labels, through `YAxis.Decimals` (4.12).
 - Tooltip values, through the `Decimals` parameter of `TChartTooltip.Draw`, which
-  `TChartView.DrawOverlay` fills from `Plot.YAxis.Decimals` (4.11).
+  `TChartView.DrawOverlay` fills from `Plot.YAxis.Decimals` (4.11), alongside that axis'
+  `LocaleName` and `UseThousandSeparator`, so the tooltip and the value axis format a
+  value identically.
 - The continuous-X point label in a tooltip's category line, through `XAxis.Decimals`.
 
 Percentages are the one exception, since a percentage carries its own precision rather
@@ -1640,8 +1645,9 @@ read from the `BDS` environment variable, defaulting to
   target within its radius and returns False outside every target; `Draw` produces a
   FillRect (box), a FillCircle (highlight) and text calls on a recording canvas; the
   tooltip box stays inside the chart bounds for anchors near every edge; the
-  `LocaleName` overload of `Draw` formats `Info.Value` with that locale (4.14), and its
-  `Decimals` parameter fixes that value's decimals (4.27); a
+  `LocaleName` overload of `Draw` formats `Info.Value` with that locale (4.14), its
+  `Decimals` parameter fixes that value's decimals and its `UseThousandSeparator`
+  parameter groups that value's digits while the default leaves it ungrouped (4.27); a
   sector target (4.23) is found by `FindTarget` when the point falls between its inner
   and outer radius and within its angular span, including a case straddling the 0/360
   wraparound, and misses when outside either bound.
@@ -1657,7 +1663,9 @@ read from the `BDS` environment variable, defaulting to
   when moving within that point, before the first render, or with `ShowTooltips` off;
   `MouseLeave` fires a miss and a repaint request only when something was hovered;
   `DrawOverlay` draws nothing when nothing is hovered or `ShowTooltips` is off, and the
-  highlight, box and series name when a point is hovered; destroying the view clears
+  highlight, box and series name when a point is hovered, and formats that value with the
+  value axis' `Decimals` and `UseThousandSeparator` rather than its own defaults (4.27);
+  destroying the view clears
   `Plot.OnChanged`, but leaves a handler assigned after the view alone.
 - `Chart4D.Axis.Tests.pas` also covers: the `LocaleName` overload of `FormatValue` against at
   least one non-invariant locale, and that the 2-argument overload's output is unchanged

@@ -37,7 +37,8 @@ type
     class function SectorContainsAngle(const PointAngle, StartAngle, SweepAngle: Single): Boolean; static;
 
     class function BuildLines(const Info: TChartHitInfo; const LocaleName: string;
-                              const Decimals: Integer): TArray<string>; static;
+                              const Decimals: Integer;
+                              const UseThousandSeparator: Boolean): TArray<string>; static;
     class function MeasureLinesWidth(const Canvas: IChartCanvas; const Lines: TArray<string>;
                                      const TextStyle: TChartTextStyle): Single; static;
     class function ComputeBoxBounds(const Info: TChartHitInfo; const BoxWidth, BoxHeight: Single;
@@ -62,13 +63,16 @@ type
     /// <c>[0, Width] x [0, Height]</c>. <c>LocaleName</c>, when non-empty, formats
     /// <c>Info.Value</c> with that locale instead of the invariant convention.
     /// <c>Decimals</c> fixes how many decimals that value is shown with, and defaults to
-    /// <c>AutomaticDecimals</c>; callers pass the hovered axis' own two settings.
+    /// <c>AutomaticDecimals</c>. <c>UseThousandSeparator</c> groups its digits, and
+    /// defaults to <c>False</c>. The three together are the value axis' own formatting,
+    /// and callers pass that axis' settings so a tooltip reads the way its axis does.
     /// </summary>
     class procedure Draw(const Canvas: IChartCanvas; const Style: TChartStyle;
                          const Info: TChartHitInfo;
                          const Width, Height: Single;
                          const LocaleName: string = '';
-                         const Decimals: Integer = AutomaticDecimals); static;
+                         const Decimals: Integer = AutomaticDecimals;
+                         const UseThousandSeparator: Boolean = False); static;
   end;
 
 implementation
@@ -154,13 +158,14 @@ class procedure TChartTooltip.Draw(const Canvas: IChartCanvas; const Style: TCha
                                    const Info: TChartHitInfo;
                                    const Width, Height: Single;
                                    const LocaleName: string = '';
-                                   const Decimals: Integer = AutomaticDecimals);
+                                   const Decimals: Integer = AutomaticDecimals;
+                                   const UseThousandSeparator: Boolean = False);
 begin
   const HighlightRadius = 5 * Style.ScaleFactor;
   Canvas.FillCircle(Info.AnchorX, Info.AnchorY, HighlightRadius, Info.Color);
 
   const TextStyle = TChartTextStyle.Create(Style.FontName, Style.CaptionFontSize, False, Style.TextColor);
-  const Lines = BuildLines(Info, LocaleName, Decimals);
+  const Lines = BuildLines(Info, LocaleName, Decimals, UseThousandSeparator);
   const Padding = 8 * Style.ScaleFactor;
   const LineHeight = Canvas.MeasureText(LineHeightSampleText, TextStyle).Height;
 
@@ -173,13 +178,14 @@ begin
 end;
 
 class function TChartTooltip.BuildLines(const Info: TChartHitInfo; const LocaleName: string;
-                                        const Decimals: Integer): TArray<string>;
+                                        const Decimals: Integer;
+                                        const UseThousandSeparator: Boolean): TArray<string>;
 begin
   var FormattedValue: string;
   if LocaleName <> '' then
-    FormattedValue := TAxisScale.FormatValue(Info.Value, False, LocaleName, Decimals)
+    FormattedValue := TAxisScale.FormatValue(Info.Value, UseThousandSeparator, LocaleName, Decimals)
   else
-    FormattedValue := TAxisScale.FormatValue(Info.Value, False, Decimals);
+    FormattedValue := TAxisScale.FormatValue(Info.Value, UseThousandSeparator, Decimals);
 
   const ValueLine = Format('%s: %s', [Info.CategoryLabel, FormattedValue]);
 

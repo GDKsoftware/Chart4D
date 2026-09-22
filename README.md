@@ -152,6 +152,9 @@ formats gets exactly that many, padded where the value has fewer: break labels, 
 labels and the tooltip. `0` rounds to whole numbers. Percentages, on the proportions axis
 and on pie and donut segments, stay whole until you set it, and then follow it too.
 
+A tooltip formats its value with the value axis' `Decimals`, `UseThousandSeparator` and
+`LocaleName`, so it reads as the same number the axis beside it shows.
+
 For a horizontal chart the value axis is still `YAxis`. The orientation swaps where the axes
 are drawn, not what they mean.
 

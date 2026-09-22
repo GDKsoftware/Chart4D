@@ -81,6 +81,12 @@ type
     procedure Draw_TwoDecimals_FormatsValueWithTrailingZeros;
 
     [Test]
+    procedure Draw_ThousandSeparator_GroupsTheValueDigits;
+
+    [Test]
+    procedure Draw_DefaultFormatting_LeavesTheValueUngrouped;
+
+    [Test]
     procedure Draw_AnchorAtTopLeftCorner_BoxStaysInsideChartBounds;
 
     [Test]
@@ -109,6 +115,7 @@ implementation
 
 uses
   System.Math,
+  Chart4D.Consts,
   Chart4D.Plot,
   Chart4D.Renderer,
   Chart4D.Style,
@@ -281,6 +288,24 @@ begin
   TChartTooltip.Draw(FCanvas, TChartStyle.Default, Info, 640, 450, '', 2);
 
   Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('1992: 77.40'));
+end;
+
+procedure TChartTooltipTests.Draw_ThousandSeparator_GroupsTheValueDigits;
+begin
+  const Info = BuildInfo('Netherlands', '1992', 40000, 320, 225, ChartBlue);
+
+  TChartTooltip.Draw(FCanvas, TChartStyle.Default, Info, 640, 450, '', AutomaticDecimals, True);
+
+  Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('1992: 40,000'));
+end;
+
+procedure TChartTooltipTests.Draw_DefaultFormatting_LeavesTheValueUngrouped;
+begin
+  const Info = BuildInfo('Netherlands', '1992', 40000, 320, 225, ChartBlue);
+
+  TChartTooltip.Draw(FCanvas, TChartStyle.Default, Info, 640, 450);
+
+  Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('1992: 40000'));
 end;
 
 procedure TChartTooltipTests.Draw_AnchorAtTopLeftCorner_BoxStaysInsideChartBounds;
