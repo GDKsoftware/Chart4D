@@ -21,6 +21,7 @@ uses
   System.SysUtils,
   DUnitX.TestFramework,
   Chart4D.Axis,
+  Chart4D.Consts,
   Chart4D.Tests.Asserts,
   Chart4D.Types;
 
@@ -67,6 +68,43 @@ type
 
     [Test]
     procedure FormatValue_NegativeValue_KeepsMinusSign;
+  end;
+
+  [TestFixture]
+  TAxisScaleDecimalsTests = class
+  public
+    [Test]
+    procedure FormatValue_AutomaticDecimals_MatchesTwoArgumentOverload;
+
+    [Test]
+    procedure FormatValue_TwoDecimals_PadsTrailingZeros;
+
+    [Test]
+    procedure FormatValue_ZeroDecimals_RoundsAndDropsDecimalPoint;
+
+    [Test]
+    procedure FormatValue_DecimalsWithThousandSeparator_KeepsCommaGrouping;
+
+    [Test]
+    procedure FormatValue_MoreDecimalsThanADoubleCarries_CapsAtFifteen;
+
+    [Test]
+    procedure FormatValue_DutchLocaleWithTwoDecimals_PadsAfterCommaSeparator;
+
+    [Test]
+    procedure BuildLabels_DecimalsSet_FormatsEveryBreakWithThatManyDecimals;
+
+    [Test]
+    procedure BuildLabels_DefaultOptions_LeaveDecimalsAutomatic;
+
+    [Test]
+    procedure FormatPercentage_AutomaticDecimals_ShowsWholePercent;
+
+    [Test]
+    procedure FormatPercentage_OneDecimal_ShowsOneDecimal;
+
+    [Test]
+    procedure FormatPercentage_DutchLocale_UsesCommaDecimalSeparator;
   end;
 
   [TestFixture]
@@ -297,6 +335,117 @@ begin
   const Actual = TAxisScale.FormatValue(-40, False);
 
   Assert.AreEqual(Expected, Actual);
+end;
+
+procedure TAxisScaleDecimalsTests.FormatValue_AutomaticDecimals_MatchesTwoArgumentOverload;
+begin
+  const Expected = TAxisScale.FormatValue(1234.5, False);
+
+  const Actual = TAxisScale.FormatValue(1234.5, False, AutomaticDecimals);
+
+  Assert.AreEqual(Expected, Actual);
+end;
+
+procedure TAxisScaleDecimalsTests.FormatValue_TwoDecimals_PadsTrailingZeros;
+begin
+  const Expected = '5.00';
+
+  const Actual = TAxisScale.FormatValue(5.0, False, 2);
+
+  Assert.AreEqual(Expected, Actual);
+end;
+
+procedure TAxisScaleDecimalsTests.FormatValue_ZeroDecimals_RoundsAndDropsDecimalPoint;
+begin
+  const Expected = '1235';
+
+  const Actual = TAxisScale.FormatValue(1234.56, False, 0);
+
+  Assert.AreEqual(Expected, Actual);
+end;
+
+procedure TAxisScaleDecimalsTests.FormatValue_DecimalsWithThousandSeparator_KeepsCommaGrouping;
+begin
+  const Expected = '1,234.50';
+
+  const Actual = TAxisScale.FormatValue(1234.5, True, 2);
+
+  Assert.AreEqual(Expected, Actual);
+end;
+
+procedure TAxisScaleDecimalsTests.FormatValue_MoreDecimalsThanADoubleCarries_CapsAtFifteen;
+begin
+  const Expected = '1.' + StringOfChar('0', 15);
+
+  const Actual = TAxisScale.FormatValue(1, False, 30);
+
+  Assert.AreEqual(Expected, Actual);
+end;
+
+procedure TAxisScaleDecimalsTests.FormatValue_DutchLocaleWithTwoDecimals_PadsAfterCommaSeparator;
+begin
+  const Expected = '5,00';
+
+  const Actual = TAxisScale.FormatValue(5.0, False, 'nl-NL', 2);
+
+  Assert.AreEqual(Expected, Actual);
+end;
+
+procedure TAxisScaleDecimalsTests.BuildLabels_DecimalsSet_FormatsEveryBreakWithThatManyDecimals;
+begin
+  const Breaks: TArray<Double> = [0, 0.5, 1];
+  var Options := TAxisOptions.Default;
+  Options.Decimals := 2;
+
+  const Labels = TAxisScale.BuildLabels(Breaks, Options);
+
+  Assert.AreEqual(3, Length(Labels));
+  Assert.AreEqual('0.00', Labels[0]);
+  Assert.AreEqual('0.50', Labels[1]);
+  Assert.AreEqual('1.00', Labels[2]);
+end;
+
+procedure TAxisScaleDecimalsTests.BuildLabels_DefaultOptions_LeaveDecimalsAutomatic;
+begin
+  const Breaks: TArray<Double> = [0, 0.5, 1];
+  const Options = TAxisOptions.Default;
+
+  const Labels = TAxisScale.BuildLabels(Breaks, Options);
+
+  Assert.AreEqual(AutomaticDecimals, Options.Decimals);
+  Assert.AreEqual('0', Labels[0]);
+  Assert.AreEqual('0.5', Labels[1]);
+  Assert.AreEqual('1', Labels[2]);
+end;
+
+procedure TAxisScaleDecimalsTests.FormatPercentage_AutomaticDecimals_ShowsWholePercent;
+begin
+  const Options = TAxisOptions.Default;
+
+  const Actual = TAxisScale.FormatPercentage(1 / 3, Options);
+
+  Assert.AreEqual('33%', Actual);
+end;
+
+procedure TAxisScaleDecimalsTests.FormatPercentage_OneDecimal_ShowsOneDecimal;
+begin
+  var Options := TAxisOptions.Default;
+  Options.Decimals := 1;
+
+  const Actual = TAxisScale.FormatPercentage(1 / 3, Options);
+
+  Assert.AreEqual('33.3%', Actual);
+end;
+
+procedure TAxisScaleDecimalsTests.FormatPercentage_DutchLocale_UsesCommaDecimalSeparator;
+begin
+  var Options := TAxisOptions.Default;
+  Options.Decimals := 1;
+  Options.LocaleName := 'nl-NL';
+
+  const Actual = TAxisScale.FormatPercentage(1 / 3, Options);
+
+  Assert.AreEqual('33,3%', Actual);
 end;
 
 procedure TAxisScaleBuildLabelsTests.BuildLabels_SuffixOnLastOnly_AppendsToLastBreakOnly;

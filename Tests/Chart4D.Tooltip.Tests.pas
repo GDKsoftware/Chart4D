@@ -78,6 +78,9 @@ type
     procedure Draw_DutchLocale_FormatsValueWithLocaleDecimalSeparator;
 
     [Test]
+    procedure Draw_TwoDecimals_FormatsValueWithTrailingZeros;
+
+    [Test]
     procedure Draw_AnchorAtTopLeftCorner_BoxStaysInsideChartBounds;
 
     [Test]
@@ -269,6 +272,15 @@ begin
   TChartTooltip.Draw(FCanvas, TChartStyle.Default, Info, 640, 450, 'nl-NL');
 
   Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('1992: 77,4'));
+end;
+
+procedure TChartTooltipTests.Draw_TwoDecimals_FormatsValueWithTrailingZeros;
+begin
+  const Info = BuildInfo('Netherlands', '1992', 77.4, 320, 225, ChartBlue);
+
+  TChartTooltip.Draw(FCanvas, TChartStyle.Default, Info, 640, 450, '', 2);
+
+  Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('1992: 77.40'));
 end;
 
 procedure TChartTooltipTests.Draw_AnchorAtTopLeftCorner_BoxStaysInsideChartBounds;

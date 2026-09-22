@@ -56,6 +56,18 @@ type
     procedure Render_StackedBarProportions_MapsTopOfEveryStackToSamePixel;
 
     [Test]
+    procedure Render_StackedBarProportionsWithDefaultDecimals_LabelsAxisInWholePercent;
+
+    [Test]
+    procedure Render_StackedBarProportionsWithOneDecimal_LabelsAxisWithThatDecimal;
+
+    [Test]
+    procedure Render_PieChartWithOneDecimal_LabelsSegmentPercentageWithThatDecimal;
+
+    [Test]
+    procedure Render_ValueAxisWithDecimals_LabelsEveryBreakWithThatManyDecimals;
+
+    [Test]
     procedure Render_StackedBarMixedSignValues_StacksPositiveAndNegativeSegmentsFromBaseline;
 
     [Test]
@@ -368,6 +380,92 @@ begin
     begin
       Assert.AreEqual(TopPerCategory[0], TopPerCategory[Index], 0.01);
     end;
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_StackedBarProportionsWithDefaultDecimals_LabelsAxisInWholePercent;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.StackedBar;
+    Plot.StackMode := TStackMode.Proportions;
+    Plot.Categories := ['2020', '2021'];
+    Plot.AddSeries('North', [4, 5]);
+    Plot.AddSeries('South', [3, 4]);
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('25%'));
+    Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('100%'));
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_StackedBarProportionsWithOneDecimal_LabelsAxisWithThatDecimal;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.StackedBar;
+    Plot.StackMode := TStackMode.Proportions;
+    Plot.Categories := ['2020', '2021'];
+    Plot.AddSeries('North', [4, 5]);
+    Plot.AddSeries('South', [3, 4]);
+
+    var AxisOptions := Plot.YAxis;
+    AxisOptions.Decimals := 1;
+    Plot.YAxis := AxisOptions;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('25.0%'));
+    Assert.IsFalse(FRecordingCanvas.HasTextEqualTo('25%'));
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_PieChartWithOneDecimal_LabelsSegmentPercentageWithThatDecimal;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Pie;
+    Plot.Categories := ['A', 'B', 'C'];
+    Plot.AddSeries('Only', [1, 1, 1]);
+
+    var AxisOptions := Plot.YAxis;
+    AxisOptions.Decimals := 1;
+    Plot.YAxis := AxisOptions;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    { A third of the circle is the case a whole percent cannot show, so it separates the
+      decimals setting from the rounding the default does. }
+    Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('A (33.3%)'));
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_ValueAxisWithDecimals_LabelsEveryBreakWithThatManyDecimals;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Categories := ['A', 'B', 'C'];
+    Plot.AddSeries('Only', [0, 0.5, 1]);
+
+    var AxisOptions := Plot.YAxis;
+    AxisOptions.Breaks := [0, 0.5, 1];
+    AxisOptions.Decimals := 2;
+    Plot.YAxis := AxisOptions;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('0.00'));
+    Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('0.50'));
+    Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('1.00'));
   finally
     Plot.Free;
   end;

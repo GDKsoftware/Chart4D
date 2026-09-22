@@ -36,6 +36,12 @@ const
   /// </summary>
   LineHeightSampleText = 'Xg';
 
+  /// <summary>
+  /// The decimal count that leaves the number of decimals to the formatter: up to ten,
+  /// with trailing zeros removed. The default of <c>TAxisOptions.Decimals</c>.
+  /// </summary>
+  AutomaticDecimals = -1;
+
 resourcestring
   /// <summary>Raised when a histogram bin width is not strictly positive.</summary>
   SBinWidthMustBePositive = 'Histogram bin width must be greater than 0, got %g';

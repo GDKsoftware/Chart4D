@@ -219,6 +219,7 @@ spanning the full plot width; `VerticalRangeOverlay` is a filled band between `X
 const
   DefaultExportWidth  = 640;
   DefaultExportHeight = 450;
+  AutomaticDecimals   = -1; // TAxisOptions.Decimals default; see 4.27
 ```
 
 The `resourcestring` entries for the capabilities in 4.12 to 4.25:
@@ -302,6 +303,7 @@ type
     Breaks: TArray<Double>;        // empty = automatic (NiceBreaks)
     BreakLabels: TArray<string>;   // empty = automatic (BuildLabels)
     UseThousandSeparator: Boolean; // default False
+    Decimals: Integer;             // default AutomaticDecimals; see 4.27
     LabelSuffix: string;           // e.g. '%' or ' years'
     SuffixOnLastOnly: Boolean;     // default True ("90 years" on the last break only)
     Visible: Boolean;              // default True (axis text)
@@ -319,7 +321,13 @@ type
     class function FormatValue(const Value: Double;
                                const UseThousandSeparator: Boolean): string; overload; static;
     class function FormatValue(const Value: Double; const UseThousandSeparator: Boolean;
+                               const Decimals: Integer): string; overload; static;
+    class function FormatValue(const Value: Double; const UseThousandSeparator: Boolean;
                                const LocaleName: string): string; overload; static;
+    class function FormatValue(const Value: Double; const UseThousandSeparator: Boolean;
+                               const LocaleName: string; const Decimals: Integer): string; overload; static;
+    class function FormatPercentage(const Proportion: Double;
+                                    const Options: TAxisOptions): string; static;
     class function BuildLabels(const Breaks: TArray<Double>;
                                const Options: TAxisOptions): TArray<string>; static;
     class function LogBreaks(const MinValue, MaxValue: Double;
@@ -366,15 +374,16 @@ Examples (used in tests): `NiceBreaks(0, 85)` = `[0, 20, 40, 60, 80]`;
 
 `FormatValue`: invariant decimal separator `.`; thousand separator `,` (fixed English
 convention, not locale dependent, so output is reproducible). Trailing decimal zeros
-removed (`5.0 → '5'`).
+removed (`5.0 → '5'`). The overloads taking a `Decimals` count fix the number of decimals
+instead (4.27).
 
 `BuildLabels`: when `Options.DateMode <> TAxisDateMode.None` (4.16), every break is
 formatted with `FormatDateValue(Break, Mode, Options.LocaleName)` instead of the rules
 below, where `Mode` is the concrete date mode resolved once from the data range before
 the breaks were placed (4.16), never a second resolution from the break span; and
-`LabelSuffix`/`UseThousandSeparator` are ignored. Otherwise: format every break with `FormatValue`
-(the 3-argument overload when `Options.LocaleName <> ''`, otherwise the 2-argument
-invariant overload); when `LabelSuffix <> ''` append it to the last break only when
+`LabelSuffix`/`UseThousandSeparator`/`Decimals` are ignored. Otherwise: format every break with `FormatValue`
+at `Options.Decimals` decimals (4.27), through `Options.LocaleName` when it is non-empty
+and the invariant convention otherwise; when `LabelSuffix <> ''` append it to the last break only when
 `SuffixOnLastOnly`, otherwise to every break. When `BreakLabels` is non-empty it wins
 entirely, before either of the above.
 
@@ -587,7 +596,9 @@ way as `Dumbbell`, as the min/max across both `Values` and `EndValues` of the
 single series. Stacked uses per-category sums, with separate positive and negative sums
 per category so a mixed-sign stack reserves room on both sides of the baseline;
 `StackMode.Proportions` normalizes each
-category to 1.0 with fixed breaks `[0, 0.25, 0.5, 0.75, 1]` labelled `0%..100%`. Add 4%
+category to 1.0 with fixed breaks `[0, 0.25, 0.5, 0.75, 1]` labelled `0%..100%` through
+`TAxisScale.FormatPercentage(Break, YAxis)`, so `YAxis.Decimals` controls their decimals
+(4.27). Add 4%
 headroom above the data maximum; for the kinds that mark a position rather than a length
 from a zero baseline, `Line`, `Dumbbell`, `Range`, `Arrow`, `Scatter` and `DotPlot`
 (`TChartKindTraits.MarksPositionNotBaseline`, 4.1), also
@@ -857,15 +868,19 @@ type
     class procedure Draw(const Canvas: IChartCanvas; const Style: TChartStyle;
                          const Info: TChartHitInfo;
                          const Width, Height: Single;
-                         const LocaleName: string = ''); static;
+                         const LocaleName: string = '';
+                         const Decimals: Integer = AutomaticDecimals); static;
   end;
 ```
 
 `Draw`'s trailing `LocaleName` parameter defaults to `''` (invariant). When non-empty it
 is used to format `Info.Value` in
-`BuildLines` via the 3-argument `TAxisScale.FormatValue` overload (4.14) instead of the
+`BuildLines` via the locale `TAxisScale.FormatValue` overload (4.14) instead of the
 invariant one; callers pass the hovered axis' `LocaleName` (typically `Plot.YAxis
-.LocaleName`). `TChartHitTarget` carries sector fields for `Pie`/`Donut` hit-testing, and
+.LocaleName`). `Decimals` follows it and defaults to `AutomaticDecimals`; it fixes how
+many decimals `Info.Value` is shown with (4.27), and callers pass the same axis' own
+`Decimals` (`TChartView.DrawOverlay` passes `Plot.YAxis.LocaleName` and
+`Plot.YAxis.Decimals`). `TChartHitTarget` carries sector fields for `Pie`/`Donut` hit-testing, and
 `TChartTooltip`'s private `TargetContainsPoint` has a branch for them; both are
 specified in 4.23, the section that introduces sectors, rather than here.
 
@@ -940,8 +955,9 @@ grouping exists only to decide which points are candidates; it does not read or 
   or two points per group, deterministically.
 
 **Placement**, at the reference scale (offsets scaled by `ScaleFactor`), text formatted as
-`TAxisScale.FormatValue(Value, YAxis.UseThousandSeparator) + YAxis.LabelSuffix` (always
-appended, unlike axis break labels, since each value label stands alone):
+`TAxisScale.FormatValue(Value, YAxis.UseThousandSeparator, YAxis.Decimals) +
+YAxis.LabelSuffix` (the suffix always appended, unlike axis break labels, since each value
+label stands alone; `YAxis.Decimals` per 4.27):
 
 - `Line`, `Area`, `Scatter`/bubble, `DotPlot`: centered on the point, offset 8 px away from
   the plot in the fixed direction for the chart's orientation (up when `Vertical`, right
@@ -1019,7 +1035,8 @@ A caller who wants Dutch or German output sets, for example, `Plot.YAxis.LocaleN
 'nl-NL'`, which affects axis break labels (`BuildLabels`) and, when the hosting control
 threads it through to `TChartTooltip.Draw`, the tooltip's value text too. `XAxis.LocaleName`
 and `YAxis.LocaleName` are independent; a chart may show an invariant value axis and a
-localized date axis (4.16), or vice versa.
+localized date axis (4.16), or vice versa. `LocaleName` picks the separators, `Decimals`
+(4.27) picks how many decimals follow them; the two are set and applied independently.
 
 ### 4.15 Logarithmic value axis
 
@@ -1371,7 +1388,8 @@ last point back to the first, back to `Center`.
 **Segment labels**, drawn unconditionally (not gated by `ValueLabels`, 4.12, which has no
 effect on `Pie`/`Donut`): for each wedge with a non-zero sweep angle, at the wedge's
 mid-angle (`StartAngle + SweepAngle / 2`) and `0.65 * OuterRadius` from center, text
-`Format('%s (%d%%)', [Categories[i], Round(100 * Values[i] / Total)])`, with the same
+`Format('%s (%s)', [Categories[i], TAxisScale.FormatPercentage(Values[i] / Total, YAxis)])`,
+which is a whole percent unless `YAxis.Decimals` asks for decimals (4.27), with the same
 white background box as a value label (4.12), and the exact same deterministic
 overlap-avoidance rule from 4.12 (fixed order = category order; skip a candidate whose
 clamped box intersects an already-drawn one).
@@ -1549,6 +1567,45 @@ The design packages write their Win64x BPL to `$(BDSCOMMONDIR)\Bpl\$(Platform)`,
 the file name is the same on both. Under `RAD Studio 12.0` they target Win32 only: that
 release has no Win64x platform.
 
+### 4.27 Decimal control
+
+No dedicated type. `Chart4D.Consts` declares `AutomaticDecimals = -1` (4.2) and
+`TAxisOptions` carries `Decimals: Integer`, default `AutomaticDecimals` (4.5).
+`TAxisScale` has a `FormatValue` overload taking a `Decimals` count after
+`UseThousandSeparator`, and a second one taking it after `LocaleName`, so a caller can fix
+the decimals with or without locale formatting (4.14). The two are independent per axis.
+
+`Decimals` selects the `FormatFloat` pattern `FormatValue` builds, and nothing else about
+it changes:
+
+- `AutomaticDecimals` (any negative count): `0.##########` or `#,##0.##########`, the
+  historical pattern. Up to ten decimals, trailing zeros removed (`5.0 → '5'`).
+- `0`: `0` or `#,##0`. The value is rounded to a whole number and no decimal separator is
+  drawn (`1234.56 → '1235'`).
+- `n > 0`: `0.` followed by `n` zeros. Exactly `n` decimals, padded where the value has
+  fewer (`5.0` at 2 → `'5.00'`), rounded where it has more. Counts above 15 are treated as
+  15, since a `Double` carries no more significant digits than that and the rest would be
+  noise.
+
+`XAxis.Decimals` and `YAxis.Decimals` reach every number the library formats from a value:
+
+- Axis break labels, through `BuildLabels` (4.5), per axis.
+- Value labels, through `YAxis.Decimals` (4.12).
+- Tooltip values, through the `Decimals` parameter of `TChartTooltip.Draw`, which
+  `TChartView.DrawOverlay` fills from `Plot.YAxis.Decimals` (4.11).
+- The continuous-X point label in a tooltip's category line, through `XAxis.Decimals`.
+
+Percentages are the one exception, since a percentage carries its own precision rather
+than the value's. `TAxisScale.FormatPercentage(Proportion, Options)` multiplies
+`Proportion` by 100, formats it with `Options` exactly as above except that
+`AutomaticDecimals` means 0 decimals there, and appends `'%'`. It is what the
+`StackMode.Proportions` value axis (4.8) and the `Pie`/`Donut` segment labels (4.23, 4.24)
+use, so both show whole percents until `YAxis.Decimals` asks for decimals, which is the
+output they had before this setting existed.
+
+Manual `BreakLabels` still win over all of it, and a date axis ignores `Decimals` entirely
+(4.16), exactly as it ignores `UseThousandSeparator`.
+
 ## 5. Tests (Tests\, DUnitX)
 
 Console project `Chart4D.Tests.dpr` + `build.bat` (dcc32; the RAD Studio location is
@@ -1568,7 +1625,10 @@ read from the `BDS` environment variable, defaulting to
   polyline per series + gridlines; a bar chart produces one FillRect per category; a
   stacked proportions chart maps the top of each stack to the same pixel; legend drawn
   only when more than one named series; footer separator/source drawn only when Source
-  is set; mismatched category/value lengths raise `EChart4DException`.
+  is set; mismatched category/value lengths raise `EChart4DException`; a value axis at a
+  fixed decimal count labels every break with it, and `YAxis.Decimals` reaches the
+  proportions axis and the pie segment percentages while the default leaves both at whole
+  percents (4.27).
 - `Chart4D.Style.Tests.pas`: `TChartStyle.Default` values per section 3.
 - `Chart4D.Invariants.Tests.pas`: boundary and ink invariants for `TChartRenderer`,
   reasoning geometrically over a `TRecordingCanvas` for every chart kind: no recorded
@@ -1580,7 +1640,8 @@ read from the `BDS` environment variable, defaulting to
   target within its radius and returns False outside every target; `Draw` produces a
   FillRect (box), a FillCircle (highlight) and text calls on a recording canvas; the
   tooltip box stays inside the chart bounds for anchors near every edge; the
-  `LocaleName` overload of `Draw` formats `Info.Value` with that locale (4.14); a
+  `LocaleName` overload of `Draw` formats `Info.Value` with that locale (4.14), and its
+  `Decimals` parameter fixes that value's decimals (4.27); a
   sector target (4.23) is found by `FindTarget` when the point falls between its inner
   and outer radius and within its angular span, including a case straddling the 0/360
   wraparound, and misses when outside either bound.
@@ -1604,7 +1665,10 @@ read from the `BDS` environment variable, defaulting to
   [1, 10, 100, 1000, 10000]` snapped to bounding powers) and its guard exception for
   `MinValue <= 0` (4.15); `ResolveDateMode` at each threshold boundary and `DateBreaks`/
   `FormatDateValue` for one fixture span per mode (`Day`, `Month`, `Quarter`, `Year`)
-  (4.16).
+  (4.16); the `Decimals` overloads of `FormatValue` (padding, zero decimals, thousand
+  separator, the 15-decimal cap, the locale overload) and that `AutomaticDecimals` matches
+  the 2-argument overload, `BuildLabels` at a fixed decimal count, and `FormatPercentage`
+  at its automatic whole percent, at one decimal and through a locale (4.27).
 - `Chart4D.Plot.Tests.pas` also covers: `SeriesColor` returns `ChartLightGrey` for every
   index except `HighlightedSeriesIndex`, and is unchanged at `-1` (4.13); `AddRangeSeries`/
   `AddArrowSeries` set `Kind`/`Orientation`/`Values`/`EndValues` like `AddDumbbellSeries`;
@@ -1635,7 +1699,8 @@ read from the `BDS` environment variable, defaulting to
   expected candidate set per chart kind and group (4.12), including the tie-break rule for
   `Extremes`; two labels whose clamped boxes would intersect are drawn in the fixed
   series-then-index order, with only the first one actually drawn; a label placement per
-  kind (`Line`, `Bar`, `Dumbbell`, `Arrow`) matches the offsets specified in 4.12.
+  kind (`Line`, `Bar`, `Dumbbell`, `Arrow`) matches the offsets specified in 4.12; and
+  `YAxis.Decimals` reaches the label text (4.27).
 
 - `Chart4D.Catalog.Tests.pas`: for the shared demo catalogue
   (`Examples\Common\Chart4DDemo.Catalog.pas`, 7), the numbers and names parsed back out of

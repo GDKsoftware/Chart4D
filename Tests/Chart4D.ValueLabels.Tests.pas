@@ -92,6 +92,9 @@ type
     procedure ValueLabels_NearAxisLabels_AreDrawnAndStayOutOfTheAxisLabelBand;
 
     [Test]
+    procedure ValueLabels_YAxisDecimals_LabelsCarryThatManyDecimals;
+
+    [Test]
     procedure ArrowChart_ShaftStopsAtTheHeadInsteadOfRunningThroughTheTip;
   end;
 
@@ -698,6 +701,28 @@ begin
     Assert.AreEqual(1, WhiteBoxCount);
     Assert.AreEqual(1, CountOfText(TAxisScale.FormatValue(82.5, False)));
     Assert.AreEqual(0, CountOfText(TAxisScale.FormatValue(70.1, False)));
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartValueLabelsTests.ValueLabels_YAxisDecimals_LabelsCarryThatManyDecimals;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Bar;
+    Plot.Categories := ['A', 'B'];
+    Plot.AddSeries('Only', [10.5, 20]);
+    Plot.ValueLabels := TValueLabelMode.All;
+
+    var AxisOptions := Plot.YAxis;
+    AxisOptions.Decimals := 2;
+    Plot.YAxis := AxisOptions;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    Assert.AreEqual(1, CountOfValueLabelText('10.50'));
+    Assert.AreEqual(1, CountOfValueLabelText('20.00'));
   finally
     Plot.Free;
   end;

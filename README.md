@@ -131,6 +131,7 @@ YAxis.MinValue := 0;                             // NaN for automatic
 YAxis.Breaks := [0, 50, 100];                    // empty for automatic
 YAxis.BreakLabels := ['none', 'half', 'all'];    // one label per break; empty to format the breaks
 YAxis.UseThousandSeparator := True;              // 40,000 instead of 40000
+YAxis.Decimals := 1;                             // 40,000.0; AutomaticDecimals to trim
 YAxis.LabelSuffix := '%';
 YAxis.SuffixOnLastOnly := True;                  // the unit on the last label only
 YAxis.LocaleName := 'nl-NL';                     // 40.000 for a Dutch audience
@@ -144,6 +145,12 @@ Plot.XAxis := XAxis;
 
 Numbers use the invariant convention unless you set `LocaleName`, so test output is
 reproducible.
+
+`Decimals` is `AutomaticDecimals` by default, which keeps up to ten decimals and drops the
+trailing zeros, so `5.0` reads as `5`. Set it to a count and every number that axis
+formats gets exactly that many, padded where the value has fewer: break labels, value
+labels and the tooltip. `0` rounds to whole numbers. Percentages, on the proportions axis
+and on pie and donut segments, stay whole until you set it, and then follow it too.
 
 For a horizontal chart the value axis is still `YAxis`. The orientation swaps where the axes
 are drawn, not what they mean.

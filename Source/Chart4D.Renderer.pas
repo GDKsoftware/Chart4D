@@ -1148,7 +1148,7 @@ begin
   SetLength(Result, Length(Breaks));
   for var Index := 0 to High(Breaks) do
   begin
-    Result[Index] := Format('%d%%', [Round(Breaks[Index] * 100)]);
+    Result[Index] := TAxisScale.FormatPercentage(Breaks[Index], FPlot.YAxis);
   end;
 end;
 
@@ -1771,7 +1771,7 @@ end;
 
 function TChartSeriesRenderer.ContinuousPointLabel(const XValue: Double): string;
 begin
-  Result := TAxisScale.FormatValue(XValue, FPlot.XAxis.UseThousandSeparator);
+  Result := TAxisScale.FormatValue(XValue, FPlot.XAxis.UseThousandSeparator, FPlot.XAxis.Decimals);
 end;
 
 function TChartSeriesRenderer.ValueLabelOffset: Single;
@@ -2495,7 +2495,8 @@ begin
   const MidAngle = StartAngle + SweepAngle / 2;
   const LabelDistance = SegmentLabelDistance(InnerRadius, OuterRadius, IsDonut);
   const LabelPoint = PointAtAngle(Center, LabelDistance, MidAngle);
-  const LabelText = Format('%s (%d%%)', [CategoryLabel(CategoryIndex), Round(100 * Value / Total)]);
+  const LabelText = Format('%s (%s)', [CategoryLabel(CategoryIndex),
+                                       TAxisScale.FormatPercentage(Value / Total, FPlot.YAxis)]);
   DrawSegmentLabel(LabelPoint, LabelText);
 
   const Info = TChartHitMap.BuildInfo(0, CategoryIndex, '', CategoryLabel(CategoryIndex),
@@ -3519,7 +3520,8 @@ end;
 procedure TChartRenderJob.DrawValueLabelCandidate(const Placer: TChartLabelPlacer;
                                                   const Candidate: TValueLabelCandidate);
 begin
-  const LabelText = TAxisScale.FormatValue(Candidate.Value, FPlot.YAxis.UseThousandSeparator) + FPlot.YAxis.LabelSuffix;
+  const LabelText = TAxisScale.FormatValue(Candidate.Value, FPlot.YAxis.UseThousandSeparator,
+                                           FPlot.YAxis.Decimals) + FPlot.YAxis.LabelSuffix;
   Placer.DrawIfClear(Candidate.AnchorPoint, LabelText, AxisTextStyle);
 end;
 
