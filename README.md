@@ -1,4 +1,4 @@
-<img src="assets/chart4d-mark-64.png" width="48" alt="Chart4D">
+<img src="assets/logo.png" align="right" width="128" alt="Chart4D logo">
 
 # Chart4D
 
@@ -319,7 +319,7 @@ move through the hit test to the repaint is covered, not just the geometry behin
 
 ## Status
 
-Version 1.0.0. See [SPEC.md](SPEC.md) for the design contract and
+Version 1.1.0. See [SPEC.md](SPEC.md) for the design contract and
 [CONTRIBUTING.md](CONTRIBUTING.md) for how to build, test and submit a change.
 
 ## License
