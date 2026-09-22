@@ -5,8 +5,10 @@
 *.exe binary
 *.res binary
 *.dres binary
+*.dcr binary
 *.ico binary
 *.png binary
+*.bmp binary
 *.gif binary
 
 *.dspec filter=insert-hash

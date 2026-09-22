@@ -23,6 +23,7 @@ program VclCheck;
 
 uses
   System.SysUtils,
+  System.Classes,
   System.IOUtils,
   Winapi.Windows,
   Winapi.Messages,
@@ -42,7 +43,13 @@ uses
   Chart4D.Tooltip in '..\..\Source\Chart4D.Tooltip.pas',
   Chart4D.Hover in '..\..\Source\Chart4D.Hover.pas',
   Chart4D.View in '..\..\Source\Chart4D.View.pas',
+  Chart4D.Preview in '..\..\Source\Chart4D.Preview.pas',
   Chart4D.VCL in '..\..\Source\VCL\Chart4D.VCL.pas';
+
+type
+  { SetDesigning is protected on TComponent; a descendant declaration is the usual way to
+    put a component in the state the form designer would put it in. }
+  TComponentDesignCrack = class(TComponent);
 
 procedure ExportSampleChart(const ExportPath: string);
 begin
@@ -560,6 +567,124 @@ begin
   Writeln('VclCheck: PNG exported to ', ExportPath, ' (', FileSize, ' bytes)');
 end;
 
+/// <summary>
+/// Every published property must survive being written to a DFM stream and read back,
+/// which is what the form designer does. A default() clause that does not match the value
+/// the plot starts out with would drop the property from the stream and load the wrong
+/// value without saying anything.
+/// </summary>
+procedure VerifyPublishedPropertiesRoundTrip;
+begin
+  const Stream = TMemoryStream.Create;
+  try
+    const Saved = TChart4D.Create(nil);
+    try
+      Saved.Name := 'SavedChart';
+      Saved.Kind := TChartKind.StackedBar;
+      Saved.Title := 'Almost everyone is online';
+      Saved.Subtitle := 'Share of the population using the internet';
+      Saved.Source := 'Source: World Bank';
+      Saved.Orientation := TChartOrientation.Horizontal;
+      Saved.StackMode := TStackMode.Proportions;
+      Saved.LegendPosition := TLegendPosition.Bottom;
+      Saved.LegendReversed := True;
+      Saved.ValueLabels := TValueLabelMode.Extremes;
+      Saved.HighlightedSeriesIndex := 1;
+      Saved.DonutCenterText := '91%';
+      Saved.ShowTooltips := False;
+
+      Stream.WriteComponent(Saved);
+    finally
+      Saved.Free;
+    end;
+
+    Stream.Position := 0;
+
+    const Loaded = TChart4D.Create(nil);
+    try
+      Stream.ReadComponent(Loaded);
+
+      if Loaded.Kind <> TChartKind.StackedBar then
+        raise EChart4DException.Create('Kind did not survive the DFM round trip');
+      if Loaded.Title <> 'Almost everyone is online' then
+        raise EChart4DException.Create('Title did not survive the DFM round trip');
+      if Loaded.Subtitle <> 'Share of the population using the internet' then
+        raise EChart4DException.Create('Subtitle did not survive the DFM round trip');
+      if Loaded.Source <> 'Source: World Bank' then
+        raise EChart4DException.Create('Source did not survive the DFM round trip');
+      if Loaded.Orientation <> TChartOrientation.Horizontal then
+        raise EChart4DException.Create('Orientation did not survive the DFM round trip');
+      if Loaded.StackMode <> TStackMode.Proportions then
+        raise EChart4DException.Create('StackMode did not survive the DFM round trip');
+      if Loaded.LegendPosition <> TLegendPosition.Bottom then
+        raise EChart4DException.Create('LegendPosition did not survive the DFM round trip');
+      if not Loaded.LegendReversed then
+        raise EChart4DException.Create('LegendReversed did not survive the DFM round trip');
+      if Loaded.ValueLabels <> TValueLabelMode.Extremes then
+        raise EChart4DException.Create('ValueLabels did not survive the DFM round trip');
+      if Loaded.HighlightedSeriesIndex <> 1 then
+        raise EChart4DException.Create('HighlightedSeriesIndex did not survive the DFM round trip');
+      if Loaded.DonutCenterText <> '91%' then
+        raise EChart4DException.Create('DonutCenterText did not survive the DFM round trip');
+      if Loaded.ShowTooltips then
+        raise EChart4DException.Create('ShowTooltips did not survive the DFM round trip');
+
+      Writeln('VclCheck: every published property survives a DFM round trip');
+    finally
+      Loaded.Free;
+    end;
+  finally
+    Stream.Free;
+  end;
+end;
+
+/// <summary>
+/// An empty chart draws nothing at run time and a sample chart at design time, so the two
+/// renders must differ. That sample is what puts a recognisable chart on the form while
+/// the developer is still deciding what data to feed it.
+/// </summary>
+procedure VerifyDesignTimePreview;
+begin
+  const Form = TForm.CreateNew(nil);
+  try
+    Form.BorderStyle := bsNone;
+    Form.SetBounds(0, 0, DefaultExportWidth, DefaultExportHeight);
+
+    const Chart = TChart4D.Create(Form);
+    Chart.Parent := Form;
+    Chart.SetBounds(0, 0, DefaultExportWidth, DefaultExportHeight);
+
+    const RuntimeRender = TBitmap.Create;
+    try
+      RuntimeRender.PixelFormat := pf32bit;
+      RuntimeRender.SetSize(DefaultExportWidth, DefaultExportHeight);
+      Form.PaintTo(RuntimeRender.Canvas, 0, 0);
+
+      const DesignRender = TBitmap.Create;
+      try
+        DesignRender.PixelFormat := pf32bit;
+        DesignRender.SetSize(DefaultExportWidth, DefaultExportHeight);
+
+        TComponentDesignCrack(Chart).SetDesigning(True);
+        Chart.Invalidate;
+        Form.PaintTo(DesignRender.Canvas, 0, 0);
+
+        const RendersTheSame = BitmapsAreIdentical(RuntimeRender, DesignRender);
+        if RendersTheSame then
+          raise EChart4DException.Create('An empty chart rendered the same at design time as at run time: the sample preview never drew');
+
+        Writeln('VclCheck: design-time preview renders a sample chart');
+      finally
+        DesignRender.Free;
+      end;
+    finally
+      RuntimeRender.Free;
+    end;
+  finally
+    Form.Free;
+  end;
+end;
+
 begin
   try
     const ExportPath = TPath.Combine(TPath.GetTempPath, 'Chart4DVclCheck.png');
@@ -574,6 +699,8 @@ begin
     VerifyControlHoverChain;
     VerifyBackBufferCaching;
     VerifyPainterBounds;
+    VerifyDesignTimePreview;
+    VerifyPublishedPropertiesRoundTrip;
 
     Writeln('VclCheck: all checks passed');
     ExitCode := 0;

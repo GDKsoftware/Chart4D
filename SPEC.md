@@ -41,14 +41,22 @@ Chart4D/
 │   ├── Chart4D.Tooltip.pas      Hit-testing and the hover tooltip (4.11)
 │   ├── Chart4D.Hover.pas        Hover state shared by both controls (4.11)
 │   ├── Chart4D.View.pas         TChartView: render validity, hover, overlay (4.25)
+│   ├── Chart4D.Preview.pas      TChartPreview: the design-time sample chart (4.26)
 │   ├── VCL/
-│   │   └── Chart4D.VCL.pas      GDI+ canvas, TChartPainter, TChart4D control, PNG export
+│   │   ├── Chart4D.VCL.pas      GDI+ canvas, TChartPainter, TChart4D control, PNG export
+│   │   └── Chart4D.VCL.Register.pas   Palette registration, design-time package only
 │   └── FMX/
-│       └── Chart4D.FMX.pas      FMX canvas, TChartPainter, TChart4D control, PNG export
+│       ├── Chart4D.FMX.pas      FMX canvas, TChartPainter, TChart4D control, PNG export
+│       └── Chart4D.FMX.Register.pas   Palette registration, design-time package only
 ├── packages/RAD Studio 13.0/
 │   ├── Chart4D_R.dpk/.dproj         requires rtl
 │   ├── Chart4D_VCL_R.dpk/.dproj     requires rtl, vcl, Chart4D_R
-│   └── Chart4D_FMX_R.dpk/.dproj     requires rtl, fmx, Chart4D_R
+│   ├── Chart4D_FMX_R.dpk/.dproj     requires rtl, fmx, Chart4D_R
+│   ├── Chart4D_VCL_D.dpk/.dproj     design-only, requires designide, Chart4D_VCL_R
+│   └── Chart4D_FMX_D.dpk/.dproj     design-only, requires designide, Chart4D_FMX_R
+├── packages/
+│   ├── Chart4D.Icons.rc/.dcr        Palette bitmaps for TChart4D
+│   └── icons/                       24 and 32 pixel bitmaps, and make-icons.ps1
 ├── Tests/                       DUnitX console project + build.bat
 ├── Examples/
 │   ├── Common/                  Chart4DDemo.Catalog.pas, shared by both demos
@@ -56,7 +64,8 @@ Chart4D/
 │   └── FMX/                     Chart4DDemoFmx.dpr
 ├── Tools/
 │   ├── CoreCheck/               Console .dpr that uses every core unit (compile check)
-│   ├── VclCheck/                Renders and exports through the VCL adapter, plus tooltip
+│   ├── VclCheck/                Renders and exports through the VCL adapter, plus tooltip,
+│   │                            the design-time preview and the DFM round trip (4.26)
 │   └── FmxCheck/                Same for FMX, plus series-pixel checks on the paint path
 ├── assets/                      Chart4D.ico and the mark, plus the .rc/.res that embeds it
 ├── docs/images/                 Rendered charts used by README.md
@@ -691,9 +700,36 @@ type
                         const Height: Integer = DefaultExportHeight);
     property Plot: TChartPlot read ...;   // owned
   published
+    // Every property below mirrors the one of the same name on Plot, so the Object
+    // Inspector reaches the settings that are a single value. Series, categories and
+    // annotations stay in code: they do not stream to a DFM.
+    property Kind: TChartKind default TChartKind.Line;
+    property Title: string;
+    property Subtitle: string;
+    property Source: string;
+    property Orientation: TChartOrientation default TChartOrientation.Vertical;
+    property StackMode: TStackMode default TStackMode.Values;
+    property LegendPosition: TLegendPosition default TLegendPosition.Top;
+    property LegendReversed: Boolean default False;
+    property ValueLabels: TValueLabelMode default TValueLabelMode.None;
+    property HighlightedSeriesIndex: Integer default NoHighlightedSeries;
+    property DonutCenterText: string;
+    property ShowTooltips: Boolean default True;
     property Align;
     property Anchors;
+    property Constraints;
+    property Enabled;
+    property Hint;
+    property ParentShowHint;
+    property PopupMenu;
+    property ShowHint;
     property Visible;
+    property OnDataPointHover: TChartHoverEvent;
+    property OnClick;
+    property OnDblClick;
+    property OnMouseDown;
+    property OnMouseMove;
+    property OnMouseUp;
   end;
 ```
 
@@ -744,6 +780,11 @@ type
                         const Width: Integer = DefaultExportWidth;
                         const Height: Integer = DefaultExportHeight);
     property Plot: TChartPlot read ...;
+  published
+    // The same mirrored plot settings as the VCL control (4.9), followed by the FMX
+    // control properties: Align, Anchors, ClipChildren, Cursor, Enabled, Height, HitTest,
+    // Margins, Opacity, Padding, Position, RotationAngle, RotationCenter, Scale, Size,
+    // Visible, Width, and the mouse events.
   end;
 ```
 
@@ -1469,6 +1510,45 @@ because a hit target with a radius could otherwise be hit from just outside the 
 maps `View.OnRepaintRequest` to its framework's repaint and frees the painter before the
 plot.
 
+### 4.26 Design-time preview and palette registration
+
+```pascal
+type
+  TChartPreview = class
+  public
+    class procedure FillFrom(const Settings, Preview: TChartPlot); static;
+  end;
+```
+
+A chart control dropped on a form has no series yet, so it would paint nothing and leave
+the developer looking at an empty rectangle. `TChartPreview.FillFrom` clears `Preview`,
+copies every single-value setting from `Settings` (kind, the three texts, style, both axes,
+orientation, stack mode, legend position and direction, value labels, donut centre text)
+and fills it with sample data for the kind that was copied: an X value per Y value for
+`Scatter`, both ends of every span for `Dumbbell`, `Range` and `Arrow`, and categories with
+one series, or two for `GroupedBar` and `StackedBar`, for every other kind.
+
+Both controls keep a second plot and painter for this, created on first use. `Paint` uses
+them when `csDesigning` is in `ComponentState` and the developer's own plot has no series,
+refilling the preview on every paint so it follows what the Object Inspector changes. The
+developer's own plot is never touched.
+
+`VclCheck` covers both halves of this on the real control: an empty chart renders
+differently at design time than at run time, and every published property survives being
+written to a stream and read back. That round trip is what catches a `default` clause that
+does not match the value `TChartPlot` starts out with, which would silently drop the
+property from the DFM.
+
+`Chart4D.VCL.Register.pas` and `Chart4D.FMX.Register.pas` each hold one `Register`
+procedure that calls `RegisterComponents('Chart4D', [TChart4D])`. They are compiled into
+the design-only packages `Chart4D_VCL_D` and `Chart4D_FMX_D`, which require `designide`
+plus their runtime package and link `packages\Chart4D.Icons.dcr` for the palette bitmaps.
+The IDE can run as a 64-bit process, and a 64-bit IDE loads Win64x design-time packages,
+so under `RAD Studio 13.0` every package targets Win64x next to its existing platforms.
+The design packages write their Win64x BPL to `$(BDSCOMMONDIR)\Bpl\$(Platform)`, because
+the file name is the same on both. Under `RAD Studio 12.0` they target Win32 only: that
+release has no Win64x platform.
+
 ## 5. Tests (Tests\, DUnitX)
 
 Console project `Chart4D.Tests.dpr` + `build.bat` (dcc32; the RAD Studio location is
@@ -1504,6 +1584,10 @@ read from the `BDS` environment variable, defaulting to
   sector target (4.23) is found by `FindTarget` when the point falls between its inner
   and outer radius and within its angular span, including a case straddling the 0/360
   wraparound, and misses when outside either bound.
+- `Chart4D.Preview.Tests.pas`: `TChartPreview.FillFrom` (4.26) carries the text and layout
+  settings over, gives a scatter series its X values and a range series its end values,
+  adds a second series for `GroupedBar`, and refilling replaces the sample instead of
+  adding to it.
 - `Chart4D.View.Tests.pas`: against a `TRecordingCanvas`, `TChartView.Render` (4.25) draws on
   the first call, draws nothing while the last render is still valid, and draws again after
   a plot change, a size change or `Invalidate`; a plot change requests a repaint without a
@@ -1572,12 +1656,20 @@ where there is no distinct condition (`SetHistogramData_SetsChartKindToHistogram
 by the `BDS` environment variable (defaulting to
 `c:\program files (x86)\embarcadero\studio\37.0` when unset, so another installation is
 a matter of setting `BDS` before the call), then `msbuild` each
-package dproj (Release/Win32), then build and run the tests via `Tests\build.bat`, then
-build both demos with dcc32. Everything must compile with zero hints and warnings.
+package dproj (Release/Win32), first the three runtime packages and then the two
+design-time ones, then all five again for Win64x when the Delphi in use has that platform,
+then build and run the tests via `Tests\build.bat` for Win32 and Win64, then build both
+demos with dcc32. Everything must compile with zero hints and warnings.
+
+The palette bitmaps are generated, not hand-drawn: `packages\icons\make-icons.ps1` scales
+`assets\chart4d-mark-256.png` down to 24 and 32 pixels on the magenta key colour, and
+`brcc32 -foChart4D.Icons.dcr Chart4D.Icons.rc` in `packages\` compiles them into the `.dcr`
+the design packages link. Both outputs are committed, so a normal build needs neither step.
 
 ## 7. Demos (Examples\)
 
-Each demo creates its main form in code (`TForm.CreateNew`, no DFM), shows a sample
+Each demo's main form lives in its form resource, the VCL one in a DFM and the FMX one in
+an FMX file, with the `TChart4D` on it as a design-time component. Each demo shows a sample
 switcher (a combo box over the shared catalogue in
 `Examples\Common\Chart4DDemo.Catalog.pas`) that rebuilds the plot for the selected
 sample, displays the explanation and the code fragment that produces the chart beside
