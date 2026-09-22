@@ -319,7 +319,7 @@ move through the hit test to the repaint is covered, not just the geometry behin
 
 ## Status
 
-Version 1.0.0. See [SPEC.md](SPEC.md) for the design contract and
+Version 1.1.0. See [SPEC.md](SPEC.md) for the design contract and
 [CONTRIBUTING.md](CONTRIBUTING.md) for how to build, test and submit a change.
 
 ## License
