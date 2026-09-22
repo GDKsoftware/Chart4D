@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="154" height="154" viewBox="0 0 154 154">
+  <!-- Chart4D logo 1: the existing bar mark on a white panel, in the OfficeXML4D layout.
+       Chart colors kept: #1380A1, #FAAB18, #990000. Frame navy #002151. -->
+  <rect width="154" height="154" rx="28" fill="#002151"/>
+  <rect x="26" y="26" width="102" height="102" rx="8" fill="#f8fafc"/>
+  <rect x="40" y="76" width="20" height="34" fill="#1380A1"/>
+  <rect x="67" y="58" width="20" height="52" fill="#FAAB18"/>
+  <rect x="94" y="40" width="20" height="70" fill="#990000"/>
+  <rect x="38" y="110" width="78" height="6" fill="#333333"/>
+  <circle cx="115" cy="115" r="26" fill="#002151"/>
+  <circle cx="115" cy="115" r="22" fill="#ffffff"/>
+  <svg x="99" y="99" width="32" height="31" viewBox="0 0 420 414">
+    <rect x="0"   y="30"  width="215" height="160" fill="#002151"/>
+    <rect x="237" y="0"   width="183" height="205" fill="#002151"/>
+    <rect x="25"  y="215" width="172" height="170" fill="#002151"/>
+    <rect x="215" y="228" width="205" height="186" fill="#002151"/>
+    <circle cx="207" cy="207" r="92" fill="#ffffff"/>
+    <circle cx="207" cy="207" r="66" fill="#65BA13"/>
+  </svg>
+</svg>

@@ -1,4 +1,4 @@
-<img src="assets/chart4d-mark-64.png" width="48" alt="Chart4D">
+<img src="assets/logo.png" align="right" width="128" alt="Chart4D logo">
 
 # Chart4D
 
