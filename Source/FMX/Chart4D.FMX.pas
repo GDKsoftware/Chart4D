@@ -34,6 +34,7 @@ uses
   Chart4D.Consts,
   Chart4D.Canvas.Interfaces,
   Chart4D.Plot,
+  Chart4D.Preview,
   Chart4D.Renderer,
   Chart4D.View;
 
@@ -159,6 +160,8 @@ type
   private
     FPlot: TChartPlot;
     FPainter: TChartPainter;
+    FDesignPlot: TChartPlot;
+    FDesignPainter: TChartPainter;
     FOnDataPointHover: TChartHoverEvent;
 
     procedure RenderForExport(const Canvas: FMX.Graphics.TCanvas; const Width, Height: Single);
@@ -166,6 +169,34 @@ type
     procedure ViewRepaintRequest(Sender: TObject);
     function GetShowTooltips: Boolean;
     procedure SetShowTooltips(const Value: Boolean);
+    function GetTitle: string;
+    procedure SetTitle(const Value: string);
+    function GetSubtitle: string;
+    procedure SetSubtitle(const Value: string);
+    function GetSource: string;
+    procedure SetSource(const Value: string);
+    function GetKind: TChartKind;
+    procedure SetKind(const Value: TChartKind);
+    function GetOrientation: TChartOrientation;
+    procedure SetOrientation(const Value: TChartOrientation);
+    function GetStackMode: TStackMode;
+    procedure SetStackMode(const Value: TStackMode);
+    function GetLegendPosition: TLegendPosition;
+    procedure SetLegendPosition(const Value: TLegendPosition);
+    function GetLegendReversed: Boolean;
+    procedure SetLegendReversed(const Value: Boolean);
+    function GetValueLabels: TValueLabelMode;
+    procedure SetValueLabels(const Value: TValueLabelMode);
+    function GetHighlightedSeriesIndex: Integer;
+    procedure SetHighlightedSeriesIndex(const Value: Integer);
+    function GetDonutCenterText: string;
+    procedure SetDonutCenterText(const Value: string);
+    /// <summary>
+    /// The painter for the design-time sample chart, created on first use and kept for
+    /// the lifetime of the control. Its plot is refilled from the developer's own plot on
+    /// every call, so the preview follows what they change in the Object Inspector.
+    /// </summary>
+    function DesignPreviewPainter: TChartPainter;
 
   protected
     /// <summary>
@@ -201,10 +232,61 @@ type
 
     /// <summary>The owned chart data and configuration.</summary>
     property Plot: TChartPlot read FPlot;
+  published
+    /// <summary>The chart kind. Mirrors <c>Plot.Kind</c>.</summary>
+    property Kind: TChartKind read GetKind write SetKind default TChartKind.Line;
+    /// <summary>The bold headline above the chart. Mirrors <c>Plot.Title</c>.</summary>
+    property Title: string read GetTitle write SetTitle;
+    /// <summary>The line under the title that says what is measured. Mirrors <c>Plot.Subtitle</c>.</summary>
+    property Subtitle: string read GetSubtitle write SetSubtitle;
+    /// <summary>The source credit in the footer. Mirrors <c>Plot.Source</c>.</summary>
+    property Source: string read GetSource write SetSource;
+    /// <summary>The direction categories run in. Mirrors <c>Plot.Orientation</c>.</summary>
+    property Orientation: TChartOrientation read GetOrientation write SetOrientation
+      default TChartOrientation.Vertical;
+    /// <summary>How a stacked bar chart combines its series. Mirrors <c>Plot.StackMode</c>.</summary>
+    property StackMode: TStackMode read GetStackMode write SetStackMode default TStackMode.Values;
+    /// <summary>Where the legend is drawn. Mirrors <c>Plot.LegendPosition</c>.</summary>
+    property LegendPosition: TLegendPosition read GetLegendPosition write SetLegendPosition
+      default TLegendPosition.Top;
+    /// <summary>Whether the legend lists its entries in reverse. Mirrors <c>Plot.LegendReversed</c>.</summary>
+    property LegendReversed: Boolean read GetLegendReversed write SetLegendReversed default False;
+    /// <summary>Which data points carry a value label. Mirrors <c>Plot.ValueLabels</c>.</summary>
+    property ValueLabels: TValueLabelMode read GetValueLabels write SetValueLabels
+      default TValueLabelMode.None;
+    /// <summary>The series drawn in full colour while the rest is muted, or -1 for none. Mirrors <c>Plot.HighlightedSeriesIndex</c>.</summary>
+    property HighlightedSeriesIndex: Integer read GetHighlightedSeriesIndex
+      write SetHighlightedSeriesIndex default NoHighlightedSeries;
+    /// <summary>The text in the hole of a donut chart. Mirrors <c>Plot.DonutCenterText</c>.</summary>
+    property DonutCenterText: string read GetDonutCenterText write SetDonutCenterText;
     /// <summary>Whether the hover tooltip is drawn during <c>Paint</c>. Default <c>True</c>.</summary>
-    property ShowTooltips: Boolean read GetShowTooltips write SetShowTooltips;
+    property ShowTooltips: Boolean read GetShowTooltips write SetShowTooltips default True;
+
+    property Align;
+    property Anchors;
+    property ClipChildren;
+    property Cursor;
+    property Enabled;
+    property Height;
+    property HitTest;
+    property Margins;
+    property Opacity;
+    property Padding;
+    property Position;
+    property RotationAngle;
+    property RotationCenter;
+    property Scale;
+    property Size;
+    property Visible;
+    property Width;
+
     /// <summary>Fired when the hovered data point changes, including when the pointer leaves every target.</summary>
     property OnDataPointHover: TChartHoverEvent read FOnDataPointHover write FOnDataPointHover;
+    property OnClick;
+    property OnDblClick;
+    property OnMouseDown;
+    property OnMouseMove;
+    property OnMouseUp;
   end;
 
 implementation
@@ -500,6 +582,8 @@ end;
 
 destructor TChart4D.Destroy;
 begin
+  FDesignPainter.Free;
+  FDesignPlot.Free;
   FPainter.Free;
   FPlot.Free;
   inherited Destroy;
@@ -515,8 +599,138 @@ begin
   FPainter.View.ShowTooltips := Value;
 end;
 
+function TChart4D.GetTitle: string;
+begin
+  Result := FPlot.Title;
+end;
+
+procedure TChart4D.SetTitle(const Value: string);
+begin
+  FPlot.Title := Value;
+end;
+
+function TChart4D.GetSubtitle: string;
+begin
+  Result := FPlot.Subtitle;
+end;
+
+procedure TChart4D.SetSubtitle(const Value: string);
+begin
+  FPlot.Subtitle := Value;
+end;
+
+function TChart4D.GetSource: string;
+begin
+  Result := FPlot.Source;
+end;
+
+procedure TChart4D.SetSource(const Value: string);
+begin
+  FPlot.Source := Value;
+end;
+
+function TChart4D.GetKind: TChartKind;
+begin
+  Result := FPlot.Kind;
+end;
+
+procedure TChart4D.SetKind(const Value: TChartKind);
+begin
+  FPlot.Kind := Value;
+end;
+
+function TChart4D.GetOrientation: TChartOrientation;
+begin
+  Result := FPlot.Orientation;
+end;
+
+procedure TChart4D.SetOrientation(const Value: TChartOrientation);
+begin
+  FPlot.Orientation := Value;
+end;
+
+function TChart4D.GetStackMode: TStackMode;
+begin
+  Result := FPlot.StackMode;
+end;
+
+procedure TChart4D.SetStackMode(const Value: TStackMode);
+begin
+  FPlot.StackMode := Value;
+end;
+
+function TChart4D.GetLegendPosition: TLegendPosition;
+begin
+  Result := FPlot.LegendPosition;
+end;
+
+procedure TChart4D.SetLegendPosition(const Value: TLegendPosition);
+begin
+  FPlot.LegendPosition := Value;
+end;
+
+function TChart4D.GetLegendReversed: Boolean;
+begin
+  Result := FPlot.LegendReversed;
+end;
+
+procedure TChart4D.SetLegendReversed(const Value: Boolean);
+begin
+  FPlot.LegendReversed := Value;
+end;
+
+function TChart4D.GetValueLabels: TValueLabelMode;
+begin
+  Result := FPlot.ValueLabels;
+end;
+
+procedure TChart4D.SetValueLabels(const Value: TValueLabelMode);
+begin
+  FPlot.ValueLabels := Value;
+end;
+
+function TChart4D.GetHighlightedSeriesIndex: Integer;
+begin
+  Result := FPlot.HighlightedSeriesIndex;
+end;
+
+procedure TChart4D.SetHighlightedSeriesIndex(const Value: Integer);
+begin
+  FPlot.HighlightedSeriesIndex := Value;
+end;
+
+function TChart4D.GetDonutCenterText: string;
+begin
+  Result := FPlot.DonutCenterText;
+end;
+
+procedure TChart4D.SetDonutCenterText(const Value: string);
+begin
+  FPlot.DonutCenterText := Value;
+end;
+
+function TChart4D.DesignPreviewPainter: TChartPainter;
+begin
+  const NeedsCreating = (FDesignPlot = nil);
+  if NeedsCreating then
+  begin
+    FDesignPlot := TChartPlot.Create;
+    FDesignPainter := TChartPainter.Create(FDesignPlot);
+  end;
+
+  TChartPreview.FillFrom(FPlot, FDesignPlot);
+  Result := FDesignPainter;
+end;
+
 procedure TChart4D.Paint;
 begin
+  const ShowsSamplePreview = ((csDesigning in ComponentState) and (FPlot.Series.Count = 0));
+  if ShowsSamplePreview then
+  begin
+    DesignPreviewPainter.Paint(Canvas, Width, Height);
+    Exit;
+  end;
+
   FPainter.Paint(Canvas, Width, Height);
 end;
 

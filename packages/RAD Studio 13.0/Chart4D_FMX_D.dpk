@@ -8,9 +8,10 @@
 {             Licensed under MIT License                }
 {                                                       }
 {*******************************************************}
-package Chart4D_R;
+package Chart4D_FMX_D;
 
 {$R *.res}
+{$R '..\Chart4D.Icons.dcr'}
 {$IFDEF IMPLICITBUILDING This IFDEF should not be used by users}
 {$ALIGN 8}
 {$ASSERTIONS ON}
@@ -36,24 +37,15 @@ package Chart4D_R;
 {$DEFINE RELEASE}
 {$ENDIF IMPLICITBUILDING}
 {$LIBSUFFIX AUTO}
-{$RUNONLY}
+{$DESIGNONLY}
 {$IMPLICITBUILD OFF}
-
 requires
-  rtl;
+  rtl,
+  fmx,
+  designide,
+  Chart4D_FMX_R;
 
 contains
-  Chart4D.Types in '..\..\Source\Chart4D.Types.pas',
-  Chart4D.Consts in '..\..\Source\Chart4D.Consts.pas',
-  Chart4D.Style in '..\..\Source\Chart4D.Style.pas',
-  Chart4D.Series in '..\..\Source\Chart4D.Series.pas',
-  Chart4D.Axis in '..\..\Source\Chart4D.Axis.pas',
-  Chart4D.Canvas.Interfaces in '..\..\Source\Chart4D.Canvas.Interfaces.pas',
-  Chart4D.Plot in '..\..\Source\Chart4D.Plot.pas',
-  Chart4D.Renderer in '..\..\Source\Chart4D.Renderer.pas',
-  Chart4D.Tooltip in '..\..\Source\Chart4D.Tooltip.pas',
-  Chart4D.Hover in '..\..\Source\Chart4D.Hover.pas',
-  Chart4D.View in '..\..\Source\Chart4D.View.pas',
-  Chart4D.Preview in '..\..\Source\Chart4D.Preview.pas';
+  Chart4D.FMX.Register in '..\..\Source\FMX\Chart4D.FMX.Register.pas';
 
 end.

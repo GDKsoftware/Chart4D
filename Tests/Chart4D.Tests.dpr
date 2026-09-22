@@ -32,6 +32,7 @@ uses
   Chart4D.Invariants.Tests in 'Chart4D.Invariants.Tests.pas',
   Chart4D.Hover.Tests in 'Chart4D.Hover.Tests.pas',
   Chart4D.View.Tests in 'Chart4D.View.Tests.pas',
+  Chart4D.Preview.Tests in 'Chart4D.Preview.Tests.pas',
   Chart4D.Style.Tests in 'Chart4D.Style.Tests.pas',
   Chart4D.Tooltip.Tests in 'Chart4D.Tooltip.Tests.pas',
   Chart4D.ValueLabels.Tests in 'Chart4D.ValueLabels.Tests.pas',

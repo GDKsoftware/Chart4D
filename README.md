@@ -280,12 +280,35 @@ ChartLightGrey    = TAlphaColor($FFDDDDDD);
 
 ## Installation
 
-Open the runtime packages under `packages\RAD Studio 13.0\` or `packages\RAD Studio 12.0\`,
+Open the packages under `packages\RAD Studio 13.0\` or `packages\RAD Studio 12.0\`,
 whichever matches your IDE, and build `Chart4D_R` for the core, then `Chart4D_VCL_R` or
 `Chart4D_FMX_R` for the framework you use.
 
-Or add `Source\` plus `Source\VCL\` or `Source\FMX\` to your project search path. Controls are
-created at runtime; there is no design-time registration yet.
+To get `TChart4D` on the component palette, install `Chart4D_VCL_D` or `Chart4D_FMX_D` as
+well: right-click the project and choose Install. Both appear on a palette page named
+Chart4D. Add `packages\dcp\Win32\Release` to the library path so your own projects find the
+compiled units.
+
+Running the IDE as a 64-bit process? Build the runtime and design packages for Win64x
+first, which is what `Build.bat` does when your Delphi has that platform, and install the
+design packages from there.
+
+Or skip the packages and add `Source\` plus `Source\VCL\` or `Source\FMX\` to your project
+search path, then create the control in code.
+
+### In the designer
+
+Drop a `TChart4D` on a form and the Object Inspector carries the settings that hold a
+single value: `Kind`, `Title`, `Subtitle`, `Source`, `Orientation`, `StackMode`,
+`LegendPosition`, `LegendReversed`, `ValueLabels`, `HighlightedSeriesIndex`,
+`DonutCenterText` and `ShowTooltips`. Each one mirrors the property of the same name on
+`Plot`, so setting it in the designer and setting it in code do the same thing.
+
+Series, categories and annotations stay in code. They are lists rather than single values
+and do not stream to a DFM, so a control with an empty plot draws a sample chart in the
+designer instead: your title, your chart kind and your legend, with placeholder data, so
+you can see the layout before the first line of code runs. The moment your own plot has a
+series, the sample is gone.
 
 ## Demos
 
@@ -303,15 +326,16 @@ from the Met Office Hadley Centre.
 
 ## Verification
 
-`Build.bat` builds the three packages, runs the DUnitX suite and builds both demos. Everything
-compiles with zero warnings and zero hints.
+`Build.bat` builds the three runtime packages and the two design-time ones, runs the DUnitX
+suite for Win32 and Win64, and builds both demos. Everything compiles with zero warnings
+and zero hints.
 
 Three console tools under `Tools\` go further:
 
 | Tool | What it checks |
 |---|---|
 | `CoreCheck` | Every core unit compiles and every scenario renders |
-| `VclCheck` | The GDI+ adapter renders, exports and reports hover |
+| `VclCheck` | The GDI+ adapter renders, exports and reports hover, the design-time preview draws, and every published property survives a DFM round trip |
 | `FmxCheck` | The same for FMX, plus every chart kind drawing real pixels |
 
 `FmxCheck` and `VclCheck` drive the control's own mouse handling, so the chain from a mouse

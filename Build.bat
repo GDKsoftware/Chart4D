@@ -63,6 +63,32 @@ call :BuildPackage Chart4D_FMX_R.dproj
 if errorlevel 1 exit /b 1
 
 echo.
+echo --- Building design-time packages (%CONFIG%, %PLATFORM%) ---
+
+call :BuildPackage Chart4D_VCL_D.dproj
+if errorlevel 1 exit /b 1
+
+call :BuildPackage Chart4D_FMX_D.dproj
+if errorlevel 1 exit /b 1
+
+rem The IDE can run as a 64-bit process, and a 64-bit IDE loads Win64x design-time
+rem packages, which need their runtime packages on Win64x as well. Delphi 12 has no
+rem Win64x platform, so this round is skipped there.
+if not "%BDS:~-4%"=="23.0" (
+  set PLATFORM=Win64x
+
+  echo.
+  echo --- Building packages for the 64-bit IDE ^(%CONFIG%, Win64x^) ---
+
+  for %%K in (Chart4D_R.dproj Chart4D_VCL_R.dproj Chart4D_FMX_R.dproj Chart4D_VCL_D.dproj Chart4D_FMX_D.dproj) do (
+    call :BuildPackage %%K
+    if errorlevel 1 exit /b 1
+  )
+
+  set PLATFORM=Win32
+)
+
+echo.
 echo --- Building and running tests ---
 
 rem Both platforms, because Win64 maps Extended onto Double: the same source can be

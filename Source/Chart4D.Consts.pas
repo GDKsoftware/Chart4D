@@ -24,6 +24,12 @@ const
   DefaultExportHeight = 450;
 
   /// <summary>
+  /// The <c>HighlightedSeriesIndex</c> value that mutes no series, which is what a plot
+  /// starts out with.
+  /// </summary>
+  NoHighlightedSeries = -1;
+
+  /// <summary>
   /// Sample text measured to get a fixed per-font-size line height, so a block of stacked
   /// lines has even spacing regardless of which lines happen to contain descenders. Shared
   /// by the renderer's wrapped title/subtitle blocks and by the tooltip's line box.

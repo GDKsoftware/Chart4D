@@ -33,7 +33,11 @@ templates:
       - src: ./Source/**.pas
       - src: ./packages/$packageSource$/*.dproj
       - src: ./packages/$packageSource$/*.dpk
+      - src: ./packages/Chart4D.Icons.dcr
     build:
       - project: ./packages/$packageSource$/Chart4D_R.dproj
       - project: ./packages/$packageSource$/Chart4D_VCL_R.dproj
       - project: ./packages/$packageSource$/Chart4D_FMX_R.dproj
+    design:
+      - project: ./packages/$packageSource$/Chart4D_VCL_D.dproj
+      - project: ./packages/$packageSource$/Chart4D_FMX_D.dproj

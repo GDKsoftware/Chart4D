@@ -20,8 +20,9 @@ For the full sweep, run from the repository root:
 Build.bat
 ```
 
-That builds the three runtime packages, builds and runs the DUnitX suite for Win32 and
-Win64, and builds both demos. Run `Tests\build.bat Win32` or `Tests\build.bat Win64` to
+That builds the three runtime packages and the two design-time ones, adds a Win64x round
+for the 64-bit IDE when your Delphi has that platform, builds and runs the DUnitX suite
+for Win32 and Win64, and builds both demos. Run `Tests\build.bat Win32` or `Tests\build.bat Win64` to
 build the suite for one platform on its own. The script looks for the newest installed Delphi; set `CHART4D_STUDIO` to `23.0` or
 `37.0` to force a version. A build must finish with zero warnings and zero hints.
 
