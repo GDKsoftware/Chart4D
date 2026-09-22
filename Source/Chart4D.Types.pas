@@ -85,6 +85,14 @@ type
   TAxisDateMode = (None, Auto, Day, Month, Quarter, Year);
 
   /// <summary>
+  /// How a discrete category axis lays out labels that will not all fit beside one
+  /// another. <c>SingleRow</c> keeps every label on one row and drops the ones that do not
+  /// fit; <c>Staggered</c> offers a crowded label a second row before dropping it.
+  /// Default <c>SingleRow</c>.
+  /// </summary>
+  TCategoryLabelLayout = (SingleRow, Staggered);
+
+  /// <summary>
   /// A single annotation drawn on top of a chart's series: a text label, a segment,
   /// an arrow, or a full-width horizontal/vertical reference line.
   /// </summary>

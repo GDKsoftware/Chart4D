@@ -304,6 +304,7 @@ type
     BreakLabels: TArray<string>;   // empty = automatic (BuildLabels)
     UseThousandSeparator: Boolean; // default False
     Decimals: Integer;             // default AutomaticDecimals; see 4.27
+    CategoryLabelLayout: TCategoryLabelLayout; // default SingleRow; see 4.28
     LabelSuffix: string;           // e.g. '%' or ' years'
     SuffixOnLastOnly: Boolean;     // default True ("90 years" on the last break only)
     Visible: Boolean;              // default True (axis text)
@@ -612,16 +613,21 @@ per break across the plot area on the value axis; the baseline at value 0 on top
 `Donut` have no value axis and skip this whole computation, and skip `DrawAxisLabels`,
 `DrawGrid` and `DrawValueLabels` (4.12) entirely: see 4.23. Category axis: a label is
 centered under (or left of, when `Orientation = Horizontal`) its band, but is drawn only
-when it fits beside its neighbours: `TChartRenderJob.SelectedCategoryLabelIndices` walks
-categories left to right (top to bottom when horizontal), always keeps index 0, and keeps
-a later index only when the distance to the last kept label (`(Index - LastKept) *
-CategoryBand`) is at least the average of the two labels' measured extents (`IChartCanvas.
+when it fits beside its neighbours: `TChartRenderJob.CategoryLabelPlacements` walks
+categories left to right (top to bottom when horizontal) and gives each label the first
+axis row it fits on, where a label fits an empty row, or one whose last label is at least
+the average of the two labels' measured extents away (`(Index - LastInRow) *
+CategoryBand` against `IChartCanvas.
 MeasureText` on the actual label text and the actual `AxisTextStyle`; width for a vertical
 chart, height for a horizontal one, since a horizontal chart stacks its category labels one
-per row down the left edge, where height, not width, is the scarce dimension). The last
-category is then kept too whenever it does not collide with the last label the walk kept,
-so the first and last category stay labelled whenever they fit, anchoring the axis. This
-is deterministic (the same categories, band and font always select the same indices) and
+per row down the left edge, where height, not width, is the scarce dimension). A label that
+fits no row is dropped. The default axis has one row, which makes this exactly the
+walk it has always been: index 0 is always kept, since nothing has been placed when it is
+offered the only row, and every later label is kept only when it clears the last one kept.
+`XAxis.CategoryLabelLayout = Staggered` gives the axis a second row instead of dropping a
+crowded label straight away (4.28). This
+is deterministic (the same categories, band, rows and font always select the same
+placements) and
 applies to every kind that draws a discrete category axis, including `Histogram`; there is
 no separate fixed-count thinning rule anywhere, since a measured fit is strictly more
 accurate than a fixed count and a second thinning rule alongside it would just be
@@ -1611,6 +1617,72 @@ output they had before this setting existed.
 Manual `BreakLabels` still win over all of it, and a date axis ignores `Decimals` entirely
 (4.16), exactly as it ignores `UseThousandSeparator`.
 
+### 4.28 Staggered category axis labels
+
+In `Chart4D.Types.pas`:
+
+```pascal
+{$SCOPEDENUMS ON}
+type
+  TCategoryLabelLayout = (SingleRow, Staggered);
+{$SCOPEDENUMS OFF}
+```
+
+`TAxisOptions` carries `CategoryLabelLayout: TCategoryLabelLayout` (default `SingleRow`),
+declared in 4.5. It is read from `XAxis` whatever the chart's `Orientation`, since the
+categories are the X axis either way, and it applies only to a discrete category axis: a
+continuous or date X axis (4.16) and `Pie`/`Donut` (4.23) ignore it, the first because
+`NiceBreaks`/`DateBreaks` already space their breaks to fit, the others because they have
+no category axis at all.
+
+`SingleRow` is the thinning rule of 4.8 unchanged: one row, and a label that does not fit
+beside the last one kept is dropped. `Staggered` gives the axis
+`StaggeredCategoryLabelRowCount` = 2 rows, and offers each label the rows in order, so a
+label crowded out of the first row moves to the second instead of disappearing.
+
+Worked example, the ten countries the demo catalogue charts
+(`Examples\Common\Chart4DDemo.Catalog.pas`) on a 640 px axis. The band there is 55.7 px
+while the narrowest pair of neighbours needs 59.4 px, so *every* adjacent pair collides and
+`SingleRow` can only keep every other name, dropping `Belgium`, `Germany`, `Poland`,
+`Romania` and `Sweden`. Two bands apart the widest pair needs 91.8 px against 111.4
+available, so the ones it dropped all fit a second row and `Staggered` keeps all ten.
+
+The left end of that axis, drawn to scale at one character per 11 px. `SingleRow`,
+with nothing where the dropped names were:
+
+```
+Netherlands  France     Italy
+```
+
+and `Staggered`, which saves them on the row below, each still centred on its own band:
+
+```
+Netherlands  France     Italy
+       Belgium    Germany
+```
+
+`Belgium` overlaps both of its neighbours on one row, which is why it is dropped there and
+why it is the second row that has to take it.
+
+A label that fits neither row is still dropped, so `Staggered` never draws two labels on
+top of each other; it only raises how many fit. The walk is the one in 4.8, over rows
+rather than over a single row, so with one row it selects exactly the indices it always
+did and `SingleRow` output is untouched.
+
+Rows are numbered from the plot area outward and step by
+`TChartRenderJob.CategoryLabelRowPitch`, which is a line of `AxisTextStyle` text plus
+`StaggeredCategoryLabelGapAtReferenceScale` = 2 px at the reference scale for a vertical
+chart (rows stack downward, below the plot), and the widest category label plus
+`LeftLabelGap` for a horizontal one (rows stack leftward, beside the plot, so a "row" is
+really a column).
+
+The room for the extra row comes out of the plot area:
+`ComputeBottomAxisLabelHeight` adds one `CategoryLabelRowPitch` for a vertical chart and
+`ComputeLeftInset` adds one for a horizontal one. It is reserved whenever `Staggered` is
+set, whether or not any label actually reaches the second row, so the plot area does not
+grow and shrink by a line of text as the data or the window size changes; a caller who
+wants the line back leaves the axis at `SingleRow`.
+
 ## 5. Tests (Tests\, DUnitX)
 
 Console project `Chart4D.Tests.dpr` + `build.bat` (dcc32; the RAD Studio location is
@@ -1709,6 +1781,19 @@ read from the `BDS` environment variable, defaulting to
   series-then-index order, with only the first one actually drawn; a label placement per
   kind (`Line`, `Bar`, `Dumbbell`, `Arrow`) matches the offsets specified in 4.12; and
   `YAxis.Decimals` reaches the label text (4.27).
+
+- `Chart4D.CategoryLabels.Tests.pas`: the category axis label layout of 4.28, against a
+  `TRecordingCanvas` with labels of a known measured width so the expected row of each one
+  follows from the band arithmetic. `SingleRow` drops the labels that do not fit and keeps
+  the rest on one row; `Staggered` on the same data draws all of them across exactly two
+  rows, one text line apart, and leaves labels that all fit on the first row alone;
+  a band too narrow for either row drops labels again, but fewer than `SingleRow` does;
+  on the worked ten-country example of 4.28, `SingleRow` keeps exactly the five names that
+  section names and drops the other five, while `Staggered` labels all ten and alternates
+  their rows, each second-row label still centred on its own band, exactly midway between
+  the first-row labels either side of it; the
+  second row stays inside the chart and is paid for by a shorter plot area; a horizontal
+  chart staggers into two columns instead; and a continuous X axis ignores the setting.
 
 - `Chart4D.Catalog.Tests.pas`: for the shared demo catalogue
   (`Examples\Common\Chart4DDemo.Catalog.pas`, 7), the numbers and names parsed back out of

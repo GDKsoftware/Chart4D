@@ -140,6 +140,7 @@ Plot.YAxis := YAxis;
 
 var XAxis := Plot.XAxis;
 XAxis.DateMode := TAxisDateMode.Auto;            // days, months, quarters or years
+XAxis.CategoryLabelLayout := TCategoryLabelLayout.Staggered;
 Plot.XAxis := XAxis;
 ```
 
@@ -154,6 +155,27 @@ and on pie and donut segments, stay whole until you set it, and then follow it t
 
 A tooltip formats its value with the value axis' `Decimals`, `UseThousandSeparator` and
 `LocaleName`, so it reads as the same number the axis beside it shows.
+
+A category label that will not fit beside its neighbour is dropped, so a crowded axis
+thins itself out instead of printing on top of itself. `CategoryLabelLayout` set to
+`Staggered` gives that axis a second row to try first. Ten country names on a 640 px axis
+leave every neighbouring pair overlapping, so only every other one survives:
+
+```
+Netherlands  France     Italy
+```
+
+Staggered, the names it had to drop go on the row below, each still centred under its own
+bar, and all ten fit:
+
+```
+Netherlands  France     Italy
+       Belgium    Germany
+```
+
+A label that fits neither row is still dropped. The second row costs a line of plot
+height (a column of width, on a horizontal chart), reserved whenever you ask for the
+layout, so the plot does not jump about as the data or the window changes.
 
 For a horizontal chart the value axis is still `YAxis`. The orientation swaps where the axes
 are drawn, not what they mean.

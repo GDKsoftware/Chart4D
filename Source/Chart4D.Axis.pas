@@ -51,6 +51,13 @@ type
     SuffixOnLastOnly: Boolean;
     /// <summary>Whether the axis text is drawn.</summary>
     Visible: Boolean;
+    /// <summary>
+    /// How a crowded discrete category axis lays its labels out. Default
+    /// <c>SingleRow</c>. Read from the X axis options whatever the chart's orientation,
+    /// since the categories are the X axis either way, and ignored by a continuous or
+    /// date X axis, whose breaks are spaced to fit by construction.
+    /// </summary>
+    CategoryLabelLayout: TCategoryLabelLayout;
     /// <summary>The scale the axis maps data through. Default <c>Linear</c>.</summary>
     Scale: TAxisScaleKind;
     /// <summary>The base of a <c>Logarithmic</c> scale. Default 10.</summary>
@@ -283,6 +290,7 @@ begin
   Result.LabelSuffix := '';
   Result.SuffixOnLastOnly := True;
   Result.Visible := True;
+  Result.CategoryLabelLayout := TCategoryLabelLayout.SingleRow;
   Result.Scale := TAxisScaleKind.Linear;
   Result.LogBase := 10;
   Result.DateMode := TAxisDateMode.None;

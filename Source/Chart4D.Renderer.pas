@@ -89,6 +89,20 @@ const
   /// </summary>
   ValueLabelOffsetAtReferenceScale = 8;
 
+  /// <summary>
+  /// The clear space, in pixels at the reference scale, between the two rows of a
+  /// staggered category axis, so the second row reads as its own line rather than as a
+  /// descender of the first.
+  /// </summary>
+  StaggeredCategoryLabelGapAtReferenceScale = 2;
+
+  /// <summary>
+  /// How many rows a staggered category axis lays its labels out on. Two is the whole
+  /// point of the layout: a label that fits neither row is dropped, exactly as
+  /// <c>SingleRow</c> drops one that does not fit its only row.
+  /// </summary>
+  StaggeredCategoryLabelRowCount = 2;
+
 type
   /// <summary>
   /// Array shapes the renderer needs that the RTL does not provide.
@@ -120,6 +134,18 @@ type
   TValueLabelCandidate = record
     AnchorPoint: TPointF;
     Value: Double;
+  end;
+
+  /// <summary>
+  /// A category axis label that survived the fit walk: which category it labels, and
+  /// which row of the axis it landed on. <c>Row</c> is always 0 for a
+  /// <c>SingleRow</c> layout, and 0 or 1 for a <c>Staggered</c> one, counting away from
+  /// the plot area.
+  /// </summary>
+  TCategoryLabelPlacement = record
+    Index: Integer;
+    Row: Integer;
+    class function Create(const Index, Row: Integer): TCategoryLabelPlacement; static;
   end;
 
   /// <summary>
@@ -771,13 +797,18 @@ type
     procedure DrawAxisLabels;
     procedure DrawValueAxisLabels;
     procedure DrawValueAxisLabel(const Pixel: Single; const LabelText: string; const TextStyle: TChartTextStyle);
-    procedure DrawCategoryAxisLabel(const Pixel: Single; const LabelText: string; const TextStyle: TChartTextStyle);
+    procedure DrawCategoryAxisLabel(const Pixel: Single; const LabelText: string;
+                                    const TextStyle: TChartTextStyle; const Row: Integer);
     procedure DrawCategoryAxisLabels;
     procedure DrawContinuousXLabels;
     procedure DrawDiscreteCategoryLabels;
-    function SelectedCategoryLabelIndices: TArray<Integer>;
+    function CategoryLabelPlacements: TArray<TCategoryLabelPlacement>;
+    function IsCategoryAxisStaggered: Boolean;
+    function CategoryLabelRowCount: Integer;
+    function CategoryLabelRowPitch: Single;
     function CategoryLabelExtent(const Index: Integer): Single;
-    procedure DrawDiscreteCategoryLabel(const Index: Integer; const TextStyle: TChartTextStyle);
+    procedure DrawDiscreteCategoryLabel(const Placement: TCategoryLabelPlacement;
+                                        const TextStyle: TChartTextStyle);
     function MarginBounds: TRectF;
     function ValueLabelClampBounds: TRectF;
 
@@ -840,6 +871,12 @@ begin
   Result.StartIndex := StartIndex;
   Result.EndIndex := EndIndex;
   Result.Height := Height;
+end;
+
+class function TCategoryLabelPlacement.Create(const Index, Row: Integer): TCategoryLabelPlacement;
+begin
+  Result.Index := Index;
+  Result.Row := Row;
 end;
 
 constructor TChartHitMap.Create(const DefaultRadius: Single);
@@ -3045,6 +3082,11 @@ begin
 
   const Labels = LeftEdgeLabels(IsHorizontal);
   Result := WidestLabelWidth(Labels, AxisTextStyle) + LeftLabelGap;
+
+  { A horizontal chart runs its categories down this edge, so a staggered category axis
+    spends its extra rows here, as columns marching left away from the plot. }
+  if IsHorizontal then
+    Result := Result + ((CategoryLabelRowCount - 1) * CategoryLabelRowPitch);
 end;
 
 function TChartRenderJob.ComputeRightInset: Single;
@@ -3143,8 +3185,19 @@ begin
   if not AxisVisible then
     Exit(0);
 
+  { A vertical chart runs its categories along this edge, so a staggered category axis
+    spends its extra rows here. The room is reserved whenever the layout is selected,
+    whether or not a label actually reaches the second row: a plot area that grew and
+    shrank by a line of text as the data or the window changed would be worse than one
+    that is a line shorter throughout. }
+  const IsBottomEdgeStaggered = not IsHorizontal;
+  var ExtraRows := 0;
+  if IsBottomEdgeStaggered then
+    ExtraRows := CategoryLabelRowCount - 1;
+
   const SampleSize = FCanvas.MeasureText('0', AxisTextStyle);
-  Result := BottomLabelMarginAbove + SampleSize.Height + BottomLabelMarginBelow;
+  Result := BottomLabelMarginAbove + SampleSize.Height + (ExtraRows * CategoryLabelRowPitch) +
+            BottomLabelMarginBelow;
 end;
 
 function TChartRenderJob.BottomEdgeAxisVisible(const IsHorizontal: Boolean): Boolean;
@@ -3254,12 +3307,18 @@ end;
 
 /// <summary>The counterpart of <c>DrawValueAxisLabel</c> for the category axis' edge.</summary>
 procedure TChartRenderJob.DrawCategoryAxisLabel(const Pixel: Single; const LabelText: string;
-                                                const TextStyle: TChartTextStyle);
+                                                const TextStyle: TChartTextStyle; const Row: Integer);
 begin
+  { Rows step away from the plot area, which is down the page below a vertical chart and
+    to the left of a horizontal one, so the offset is subtracted there rather than added. }
+  const RowOffset = Row * CategoryLabelRowPitch;
+
   if FGeometry.IsHorizontal then
-    FCanvas.DrawText(AxisLabelRightEdge, Pixel, LabelText, TextStyle, TTextAlignH.Right, TTextAlignV.Middle)
+    FCanvas.DrawText(AxisLabelRightEdge - RowOffset, Pixel, LabelText, TextStyle,
+                     TTextAlignH.Right, TTextAlignV.Middle)
   else
-    FCanvas.DrawText(Pixel, AxisLabelTopEdge, LabelText, TextStyle, TTextAlignH.Center, TTextAlignV.Top);
+    FCanvas.DrawText(Pixel, AxisLabelTopEdge + RowOffset, LabelText, TextStyle,
+                     TTextAlignH.Center, TTextAlignV.Top);
 end;
 
 procedure TChartRenderJob.DrawCategoryAxisLabels;
@@ -3278,15 +3337,15 @@ begin
   const TextStyle = AxisTextStyle;
   for var Index := 0 to High(FXBreaks) do
   begin
-    DrawCategoryAxisLabel(FGeometry.MapX(FXBreaks[Index]), FXBreakLabels[Index], TextStyle);
+    DrawCategoryAxisLabel(FGeometry.MapX(FXBreaks[Index]), FXBreakLabels[Index], TextStyle, 0);
   end;
 end;
 
 procedure TChartRenderJob.DrawDiscreteCategoryLabels;
 begin
   const TextStyle = AxisTextStyle;
-  for var Index in SelectedCategoryLabelIndices do
-    DrawDiscreteCategoryLabel(Index, TextStyle);
+  for var Placement in CategoryLabelPlacements do
+    DrawDiscreteCategoryLabel(Placement, TextStyle);
 end;
 
 function TChartRenderJob.CategoryLabelExtent(const Index: Integer): Single;
@@ -3298,46 +3357,90 @@ begin
     Result := TextSize.Width;
 end;
 
-function TChartRenderJob.SelectedCategoryLabelIndices: TArray<Integer>;
+function TChartRenderJob.IsCategoryAxisStaggered: Boolean;
+begin
+  const IsStaggered = (FPlot.XAxis.CategoryLabelLayout = TCategoryLabelLayout.Staggered);
+  Result := IsStaggered and not FIsContinuousX and not IsPieOrDonut;
+end;
+
+function TChartRenderJob.CategoryLabelRowCount: Integer;
+begin
+  if IsCategoryAxisStaggered then
+    Result := StaggeredCategoryLabelRowCount
+  else
+    Result := 1;
+end;
+
+/// <summary>
+/// The step from one category label row to the next, along the direction the rows march
+/// away from the plot area. A vertical chart stacks its rows downwards, so the step is a
+/// line of axis text plus a clear gap; a horizontal chart puts them side by side to the
+/// left of the plot, so the step is the width of the widest label plus the same gap the
+/// single-row layout leaves. Measured from <c>FPlot.Orientation</c> rather than from
+/// <c>FGeometry</c>, because the layout needs it before the geometry exists.
+/// </summary>
+function TChartRenderJob.CategoryLabelRowPitch: Single;
+begin
+  const IsHorizontal = (FPlot.Orientation = TChartOrientation.Horizontal);
+  if IsHorizontal then
+    Exit(WidestLabelWidth(CategoryAxisLabels, AxisTextStyle) + LeftLabelGap);
+
+  const SampleSize = FCanvas.MeasureText('0', AxisTextStyle);
+  Result := SampleSize.Height + (StaggeredCategoryLabelGapAtReferenceScale * FStyle.ScaleFactor);
+end;
+
+/// <summary>
+/// Walks the categories in order and hands each label the first row it fits on, which is
+/// the single-row thinning rule generalized: a label fits an empty row, or one whose last
+/// label is far enough away that the two do not touch. A label that fits no row is
+/// dropped. With one row this selects exactly the indices the rule always selected, index
+/// 0 included, since nothing has been placed when index 0 is offered row 0.
+/// </summary>
+function TChartRenderJob.CategoryLabelPlacements: TArray<TCategoryLabelPlacement>;
 begin
   Result := [];
   if FCategoryCount = 0 then
     Exit;
 
-  const LastIndex = FCategoryCount - 1;
-  Result := [0];
-  var LastDrawnIndex := 0;
-  var LastDrawnExtent := CategoryLabelExtent(0);
+  const RowCount = CategoryLabelRowCount;
+  const NoLabelPlaced = -1;
 
-  for var Index := 1 to LastIndex - 1 do
+  var LastIndexInRow: TArray<Integer>;
+  var LastExtentInRow: TArray<Single>;
+  SetLength(LastIndexInRow, RowCount);
+  SetLength(LastExtentInRow, RowCount);
+  for var Row := 0 to RowCount - 1 do
   begin
-    const Extent = CategoryLabelExtent(Index);
-    const Distance = (Index - LastDrawnIndex) * FGeometry.CategoryBand;
-    const RequiredGap = (LastDrawnExtent + Extent) / 2;
-    const Fits = (Distance >= RequiredGap);
-    if not Fits then
-      Continue;
-
-    Result := Result + [Index];
-    LastDrawnIndex := Index;
-    LastDrawnExtent := Extent;
+    LastIndexInRow[Row] := NoLabelPlaced;
+    LastExtentInRow[Row] := 0;
   end;
 
-  const HasDistinctLastIndex = (LastIndex > 0);
-  if not HasDistinctLastIndex then
-    Exit;
+  for var Index := 0 to FCategoryCount - 1 do
+  begin
+    const Extent = CategoryLabelExtent(Index);
 
-  const LastExtent = CategoryLabelExtent(LastIndex);
-  const DistanceToLast = (LastIndex - LastDrawnIndex) * FGeometry.CategoryBand;
-  const RequiredGapToLast = (LastDrawnExtent + LastExtent) / 2;
-  const LastFits = (DistanceToLast >= RequiredGapToLast);
-  if LastFits then
-    Result := Result + [LastIndex];
+    for var Row := 0 to RowCount - 1 do
+    begin
+      const IsRowEmpty = (LastIndexInRow[Row] = NoLabelPlaced);
+      const Distance = (Index - LastIndexInRow[Row]) * FGeometry.CategoryBand;
+      const RequiredGap = (LastExtentInRow[Row] + Extent) / 2;
+      const Fits = IsRowEmpty or (Distance >= RequiredGap);
+      if not Fits then
+        Continue;
+
+      Result := Result + [TCategoryLabelPlacement.Create(Index, Row)];
+      LastIndexInRow[Row] := Index;
+      LastExtentInRow[Row] := Extent;
+      Break;
+    end;
+  end;
 end;
 
-procedure TChartRenderJob.DrawDiscreteCategoryLabel(const Index: Integer; const TextStyle: TChartTextStyle);
+procedure TChartRenderJob.DrawDiscreteCategoryLabel(const Placement: TCategoryLabelPlacement;
+                                                    const TextStyle: TChartTextStyle);
 begin
-  DrawCategoryAxisLabel(CategoryCenter(Index), FCategoryLabels[Index], TextStyle);
+  DrawCategoryAxisLabel(CategoryCenter(Placement.Index), FCategoryLabels[Placement.Index],
+                        TextStyle, Placement.Row);
 end;
 
 procedure TChartRenderJob.DrawRangeOverlays;
