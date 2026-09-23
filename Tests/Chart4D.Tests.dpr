@@ -37,6 +37,7 @@ uses
   Chart4D.Tooltip.Tests in 'Chart4D.Tooltip.Tests.pas',
   Chart4D.ValueLabels.Tests in 'Chart4D.ValueLabels.Tests.pas',
   Chart4D.CategoryLabels.Tests in 'Chart4D.CategoryLabels.Tests.pas',
+  Chart4D.SegmentLabels.Tests in 'Chart4D.SegmentLabels.Tests.pas',
   Chart4D.Catalog.Tests in 'Chart4D.Catalog.Tests.pas',
   Chart4DDemo.Catalog in '..\Examples\Common\Chart4DDemo.Catalog.pas';
 

@@ -149,6 +149,35 @@ type
   end;
 
   /// <summary>
+  /// The circle a <c>Pie</c> or <c>Donut</c> is drawn in, and the total its segments share
+  /// out: everything a wedge or its label needs besides the wedge's own angles.
+  /// </summary>
+  TPieFrame = record
+    Center: TPointF;
+    InnerRadius: Single;
+    OuterRadius: Single;
+    IsDonut: Boolean;
+    Total: Double;
+  end;
+
+  /// <summary>
+  /// One segment of a <c>Pie</c> or <c>Donut</c> with a non-zero sweep: the category it
+  /// stands for, where it starts and how far it sweeps, clockwise from 12 o'clock at -90
+  /// degrees, and its value. Built once per render, so the wedges and their labels can be
+  /// drawn in separate passes.
+  /// </summary>
+  TPieWedge = record
+    CategoryIndex: Integer;
+    StartAngle: Single;
+    SweepAngle: Single;
+    Value: Double;
+    class function Create(const CategoryIndex: Integer; const StartAngle, SweepAngle: Single;
+                          const Value: Double): TPieWedge; static;
+    /// <summary>The angle halfway through the sweep, which a segment label is centred on.</summary>
+    function MidAngle: Single;
+  end;
+
+  /// <summary>
   /// Draws labels that sit on top of chart ink, each on its own <c>ChartLabelBackground</c>
   /// box: it sizes the box around the measured text, shifts it back inside the clamp
   /// bounds when it would stick out, and remembers where every box landed so a later label
@@ -694,9 +723,10 @@ type
     function SegmentCount(const SweepAngle: Single): Integer;
     function ArcPoints(const Center: TPointF; const Radius, StartAngle, SweepAngle: Single;
                        const SegmentCount: Integer): TArray<TPointF>;
-    procedure DrawWedge(const CategoryIndex: Integer; const Center: TPointF;
-                        const InnerRadius, OuterRadius, StartAngle, SweepAngle: Single;
-                        const IsDonut: Boolean; const Value, Total: Double);
+    function BuildWedges(const Values: TArray<Double>; const Total: Double): TArray<TPieWedge>;
+    procedure DrawWedge(const Wedge: TPieWedge; const Frame: TPieFrame);
+    procedure DrawWedgeLabel(const Wedge: TPieWedge; const Frame: TPieFrame);
+    function SegmentLabelPoint(const Wedge: TPieWedge; const Frame: TPieFrame): TPointF;
     function SegmentLabelDistance(const InnerRadius, OuterRadius: Single; const IsDonut: Boolean): Single;
     function PointAtAngle(const Center: TPointF; const Distance, AngleDegrees: Single): TPointF;
     procedure DrawCenterText(const Center: TPointF);
@@ -877,6 +907,20 @@ class function TCategoryLabelPlacement.Create(const Index, Row: Integer): TCateg
 begin
   Result.Index := Index;
   Result.Row := Row;
+end;
+
+class function TPieWedge.Create(const CategoryIndex: Integer; const StartAngle, SweepAngle: Single;
+                                const Value: Double): TPieWedge;
+begin
+  Result.CategoryIndex := CategoryIndex;
+  Result.StartAngle := StartAngle;
+  Result.SweepAngle := SweepAngle;
+  Result.Value := Value;
+end;
+
+function TPieWedge.MidAngle: Single;
+begin
+  Result := StartAngle + SweepAngle / 2;
 end;
 
 constructor TChartHitMap.Create(const DefaultRadius: Single);
@@ -2441,33 +2485,50 @@ end;
 procedure TCircularSeriesRenderer.Draw;
 begin
   const PieSeries = FPlot.Series[0];
-  const SeriesTotal = Total(PieSeries.Values);
-  const IsDonut = (FPlot.Kind = TChartKind.Donut);
-  const PieCenter = Center;
-  const PieOuterRadius = OuterRadius;
-  const PieInnerRadius = InnerRadius(PieOuterRadius);
 
-  const HasZeroTotal = SameValue(SeriesTotal, 0);
-  if not HasZeroTotal then
+  var Frame: TPieFrame;
+  Frame.Center := Center;
+  Frame.OuterRadius := OuterRadius;
+  Frame.InnerRadius := InnerRadius(Frame.OuterRadius);
+  Frame.IsDonut := (FPlot.Kind = TChartKind.Donut);
+  Frame.Total := Total(PieSeries.Values);
+
+  const Wedges = BuildWedges(PieSeries.Values, Frame.Total);
+
+  { Every wedge before any label: a label drawn right after its own wedge would be painted
+    over by the next one, and would still hold its place against the labels after it. }
+  for var Wedge in Wedges do
+    DrawWedge(Wedge, Frame);
+
+  for var Wedge in Wedges do
+    DrawWedgeLabel(Wedge, Frame);
+
+  if Frame.IsDonut then
+    DrawCenterText(Frame.Center);
+end;
+
+function TCircularSeriesRenderer.BuildWedges(const Values: TArray<Double>; const Total: Double): TArray<TPieWedge>;
+begin
+  Result := [];
+
+  const HasZeroTotal = SameValue(Total, 0);
+  if HasZeroTotal then
+    Exit;
+
+  var CumulativeValue: Double := 0.0;
+  for var Index := 0 to High(Values) do
   begin
-    var CumulativeValue: Double := 0.0;
-    for var Index := 0 to High(PieSeries.Values) do
-    begin
-      const Value = PieSeries.Values[Index];
-      const SweepAngle = 360 * Value / SeriesTotal;
-      const StartAngle = -90 + 360 * CumulativeValue / SeriesTotal;
-      CumulativeValue := CumulativeValue + Value;
+    const Value = Values[Index];
+    const SweepAngle = 360 * Value / Total;
+    const StartAngle = -90 + 360 * CumulativeValue / Total;
+    CumulativeValue := CumulativeValue + Value;
 
-      const HasNoSweep = SameValue(SweepAngle, 0);
-      if HasNoSweep then
-        Continue;
+    const HasNoSweep = SameValue(SweepAngle, 0);
+    if HasNoSweep then
+      Continue;
 
-      DrawWedge(Index, PieCenter, PieInnerRadius, PieOuterRadius, StartAngle, SweepAngle, IsDonut, Value, SeriesTotal);
-    end;
+    Result := Result + [TPieWedge.Create(Index, StartAngle, SweepAngle, Value)];
   end;
-
-  if IsDonut then
-    DrawCenterText(PieCenter);
 end;
 
 function TCircularSeriesRenderer.Center: TPointF;
@@ -2513,32 +2574,37 @@ begin
   end;
 end;
 
-procedure TCircularSeriesRenderer.DrawWedge(const CategoryIndex: Integer; const Center: TPointF;
-                                            const InnerRadius, OuterRadius, StartAngle, SweepAngle: Single;
-                                            const IsDonut: Boolean; const Value, Total: Double);
+procedure TCircularSeriesRenderer.DrawWedge(const Wedge: TPieWedge; const Frame: TPieFrame);
 begin
-  const Color = FPlot.CategoryColor(CategoryIndex);
-  const Segments = SegmentCount(SweepAngle);
+  const Color = FPlot.CategoryColor(Wedge.CategoryIndex);
+  const Segments = SegmentCount(Wedge.SweepAngle);
+  const OuterArc = ArcPoints(Frame.Center, Frame.OuterRadius, Wedge.StartAngle, Wedge.SweepAngle, Segments);
 
   var Points: TArray<TPointF>;
-  if IsDonut then
-    Points := ArcPoints(Center, OuterRadius, StartAngle, SweepAngle, Segments) +
-              TChartArray.Reversed<TPointF>(ArcPoints(Center, InnerRadius, StartAngle, SweepAngle, Segments))
+  if Frame.IsDonut then
+    Points := OuterArc + TChartArray.Reversed<TPointF>(
+                ArcPoints(Frame.Center, Frame.InnerRadius, Wedge.StartAngle, Wedge.SweepAngle, Segments))
   else
-    Points := [Center] + ArcPoints(Center, OuterRadius, StartAngle, SweepAngle, Segments);
+    Points := [Frame.Center] + OuterArc;
 
   FCanvas.FillPolygon(Points, Color);
 
-  const MidAngle = StartAngle + SweepAngle / 2;
-  const LabelDistance = SegmentLabelDistance(InnerRadius, OuterRadius, IsDonut);
-  const LabelPoint = PointAtAngle(Center, LabelDistance, MidAngle);
-  const LabelText = Format('%s (%s)', [CategoryLabel(CategoryIndex),
-                                       TAxisScale.FormatPercentage(Value / Total, FPlot.YAxis)]);
-  DrawSegmentLabel(LabelPoint, LabelText);
+  const Info = TChartHitMap.BuildInfo(0, Wedge.CategoryIndex, '', CategoryLabel(Wedge.CategoryIndex),
+                                      Wedge.Value, SegmentLabelPoint(Wedge, Frame), Color);
+  FHitMap.AddSector(Frame.Center, Frame.InnerRadius, Frame.OuterRadius, Wedge.StartAngle, Wedge.SweepAngle, Info);
+end;
 
-  const Info = TChartHitMap.BuildInfo(0, CategoryIndex, '', CategoryLabel(CategoryIndex),
-                                      Value, LabelPoint, Color);
-  FHitMap.AddSector(Center, InnerRadius, OuterRadius, StartAngle, SweepAngle, Info);
+procedure TCircularSeriesRenderer.DrawWedgeLabel(const Wedge: TPieWedge; const Frame: TPieFrame);
+begin
+  const LabelText = Format('%s (%s)', [CategoryLabel(Wedge.CategoryIndex),
+                                       TAxisScale.FormatPercentage(Wedge.Value / Frame.Total, FPlot.YAxis)]);
+  DrawSegmentLabel(SegmentLabelPoint(Wedge, Frame), LabelText);
+end;
+
+function TCircularSeriesRenderer.SegmentLabelPoint(const Wedge: TPieWedge; const Frame: TPieFrame): TPointF;
+begin
+  const LabelDistance = SegmentLabelDistance(Frame.InnerRadius, Frame.OuterRadius, Frame.IsDonut);
+  Result := PointAtAngle(Frame.Center, LabelDistance, Wedge.MidAngle);
 end;
 
 function TCircularSeriesRenderer.SegmentLabelDistance(const InnerRadius, OuterRadius: Single;

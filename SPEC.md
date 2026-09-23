@@ -1401,7 +1401,10 @@ mid-angle (`StartAngle + SweepAngle / 2`) and `0.65 * OuterRadius` from center, 
 which is a whole percent unless `YAxis.Decimals` asks for decimals (4.27), with the same
 white background box as a value label (4.12), and the exact same deterministic
 overlap-avoidance rule from 4.12 (fixed order = category order; skip a candidate whose
-clamped box intersects an already-drawn one).
+clamped box intersects an already-drawn one). Labels are drawn in a second pass, after
+every wedge: a label drawn right after its own wedge would be painted over by the next
+one, and would still hold its place against the labels after it, so a visible label could
+be dropped for colliding with one nobody can see.
 
 **Legend.** One item per category (`BuildCategoryLegendItems`, 4.8):
 `Categories[i]`/`CategoryColor(i)` (4.7), since wedge color comes from the category
@@ -1794,6 +1797,10 @@ read from the `BDS` environment variable, defaulting to
   the first-row labels either side of it; the
   second row stays inside the chart and is paid for by a shorter plot area; a horizontal
   chart staggers into two columns instead; and a continuous X axis ignores the setting.
+
+- `Chart4D.SegmentLabels.Tests.pas`: the `Pie`/`Donut` segment labels of 4.23, against a
+  `TRecordingCanvas`. In the recorded call order every segment label of a pie and of a
+  donut comes after the last wedge, so no wedge can be drawn over a label.
 
 - `Chart4D.Catalog.Tests.pas`: for the shared demo catalogue
   (`Examples\Common\Chart4DDemo.Catalog.pas`, 7), the numbers and names parsed back out of
