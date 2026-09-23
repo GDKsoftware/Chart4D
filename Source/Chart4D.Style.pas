@@ -51,6 +51,13 @@ const
   ChartLabelBackground = TAlphaColor($FFFFFFFF);
 
   /// <summary>
+  /// The highest WCAG contrast ratio there is, black against white. As a minimum text
+  /// contrast it is never reached by anything but that pair, so text simply takes
+  /// whichever candidate color reads better.
+  /// </summary>
+  MaximumContrastRatio = 21.0;
+
+  /// <summary>
   /// The default series color palette. <c>TChartPlot.SeriesColor</c> cycles through it
   /// when a series does not set its own <c>Color</c>.
   /// </summary>
@@ -129,6 +136,15 @@ type
     /// <c>ChartLabelBackground</c> whatever this is.
     /// </summary>
     LabelBackgroundColor: TAlphaColor;
+    /// <summary>
+    /// The WCAG contrast ratio a pie or donut segment label's <c>TextColor</c> must reach
+    /// against what is behind it before the label gives it up. At or above it the label
+    /// keeps <c>TextColor</c>; below it the label takes whichever of <c>TextColor</c> and
+    /// white reads better. Default 4.5, the WCAG AA minimum for normal text. 1 never
+    /// switches, and so does 0, the value of a zeroed record; 3 is the WCAG minimum for
+    /// large text; <c>MaximumContrastRatio</c> always takes the more legible of the two.
+    /// </summary>
+    MinimumTextContrast: Double;
 
     /// <summary>
     /// Returns the default editorial style described in the specification.
@@ -159,11 +175,14 @@ type
     /// </summary>
     class function ContrastRatio(const First, Second: TAlphaColor): Double; static;
     /// <summary>
-    /// Returns <c>Preferred</c> unless white contrasts more with <c>Background</c>, in
-    /// which case it returns white: text keeps the style's own color wherever that reads
-    /// at least as well, and turns white only on ink too dark for it.
+    /// Returns <c>Preferred</c> when its contrast ratio against <c>Background</c> reaches
+    /// <c>MinimumContrast</c>. Otherwise returns whichever of <c>Preferred</c> and white
+    /// contrasts more with <c>Background</c>, <c>Preferred</c> on a tie. The default,
+    /// <c>MaximumContrastRatio</c>, therefore always returns the more legible of the two,
+    /// and a minimum of 1 or less always returns <c>Preferred</c>.
     /// </summary>
-    class function ReadableTextColor(const Preferred, Background: TAlphaColor): TAlphaColor; static;
+    class function ReadableTextColor(const Preferred, Background: TAlphaColor;
+                                     const MinimumContrast: Double = MaximumContrastRatio): TAlphaColor; static;
   end;
 
 implementation
@@ -200,6 +219,7 @@ begin
   Result.MaxBubbleRadius := 24;
   Result.DonutInnerRadiusFactor := 0.6;
   Result.LabelBackgroundColor := ChartLabelBackground;
+  Result.MinimumTextContrast := 4.5;
 end;
 
 class function TChartColors.Blend(const Over, Under: TAlphaColor): TAlphaColor;
@@ -249,9 +269,14 @@ begin
   Result := (Max(FirstLuminance, SecondLuminance) + 0.05) / (Min(FirstLuminance, SecondLuminance) + 0.05);
 end;
 
-class function TChartColors.ReadableTextColor(const Preferred, Background: TAlphaColor): TAlphaColor;
+class function TChartColors.ReadableTextColor(const Preferred, Background: TAlphaColor;
+                                              const MinimumContrast: Double): TAlphaColor;
 begin
   const PreferredContrast = ContrastRatio(Preferred, Background);
+  const PreferredIsReadable = (PreferredContrast >= MinimumContrast);
+  if PreferredIsReadable then
+    Exit(Preferred);
+
   const WhiteContrast = ContrastRatio(TAlphaColors.White, Background);
   if PreferredContrast >= WhiteContrast then
     Result := Preferred

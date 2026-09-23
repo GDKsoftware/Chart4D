@@ -40,6 +40,8 @@ type
     function SegmentLabelCall(const Text: string): TCanvasCall;
     function RenderThirds(const Mode: TSegmentLabelMode;
                           const LabelBackground: TAlphaColor = ChartLabelBackground): TArray<TChartHitTarget>;
+    function RenderThirdsWithStyle(const Mode: TSegmentLabelMode; const Style: TChartStyle): TArray<TChartHitTarget>;
+    function BoxlessStyleWithMinimumContrast(const MinimumContrast: Double): TChartStyle;
     function LastCallIndexOfKind(const Kind: TCanvasCallKind): Integer;
     function CountOfText(const Text: string): Integer;
     procedure AssertEveryLabelDrawnAfterTheLastWedge;
@@ -89,6 +91,12 @@ type
 
     [Test]
     procedure LabelBackground_Transparent_StillDropsACollidingLabel;
+
+    [Test]
+    procedure MinimumTextContrast_Three_KeepsDarkTextOnTheBlueWedgeOnly;
+
+    [Test]
+    procedure MinimumTextContrast_One_KeepsTheStyleTextColorOnEveryWedge;
   end;
 
 implementation
@@ -153,6 +161,14 @@ end;
 function TSegmentLabelTests.RenderThirds(const Mode: TSegmentLabelMode;
                                          const LabelBackground: TAlphaColor): TArray<TChartHitTarget>;
 begin
+  var Style := TChartStyle.Default;
+  Style.LabelBackgroundColor := LabelBackground;
+  Result := RenderThirdsWithStyle(Mode, Style);
+end;
+
+function TSegmentLabelTests.RenderThirdsWithStyle(const Mode: TSegmentLabelMode;
+                                                  const Style: TChartStyle): TArray<TChartHitTarget>;
+begin
   const Plot = TChartPlot.Create;
   try
     Plot.Kind := TChartKind.Pie;
@@ -160,15 +176,23 @@ begin
     Plot.Categories := ['A', 'B', 'C'];
     Plot.AddSeries('Share', [1, 1, 1]);
     Plot.SegmentLabels := Mode;
-
-    var Style := Plot.Style;
-    Style.LabelBackgroundColor := LabelBackground;
     Plot.Style := Style;
 
     TChartRenderer.Render(Plot, FCanvas, ChartWidth, ChartHeight, Result);
   finally
     Plot.Free;
   end;
+end;
+
+/// <summary>
+/// The default style with no label box, so each segment label's text sits straight on its
+/// wedge, and the given minimum text contrast.
+/// </summary>
+function TSegmentLabelTests.BoxlessStyleWithMinimumContrast(const MinimumContrast: Double): TChartStyle;
+begin
+  Result := TChartStyle.Default;
+  Result.LabelBackgroundColor := TAlphaColors.Null;
+  Result.MinimumTextContrast := MinimumContrast;
 end;
 
 function TSegmentLabelTests.CountOfText(const Text: string): Integer;
@@ -361,6 +385,30 @@ begin
   Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('B (8%)'));
   Assert.IsFalse(FRecordingCanvas.HasTextEqualTo('A (1%)'),
     'Without a box the 1% label still collides with the 8% one and is dropped');
+end;
+
+procedure TSegmentLabelTests.MinimumTextContrast_Three_KeepsDarkTextOnTheBlueWedgeOnly;
+begin
+  { The dark text reaches about 3.5 to 1 on the blue wedge, enough at a minimum of 3, and
+    only about 1.8 on the dark red one, where it still turns white. }
+  RenderThirdsWithStyle(TSegmentLabelMode.CategoryAndPercentage, BoxlessStyleWithMinimumContrast(3));
+
+  Assert.AreEqual<TAlphaColor>(ChartTextDark, SegmentLabelCall('A (33%)').TextStyle.Color,
+    'At a minimum of 3 the dark text is legible enough on blue to keep');
+  Assert.AreEqual<TAlphaColor>(ChartTextDark, SegmentLabelCall('B (33%)').TextStyle.Color);
+  Assert.AreEqual<TAlphaColor>(TAlphaColors.White, SegmentLabelCall('C (33%)').TextStyle.Color,
+    'Dark red is still too dark for the dark text');
+end;
+
+procedure TSegmentLabelTests.MinimumTextContrast_One_KeepsTheStyleTextColorOnEveryWedge;
+begin
+  RenderThirdsWithStyle(TSegmentLabelMode.CategoryAndPercentage, BoxlessStyleWithMinimumContrast(1));
+
+  for var Text in ['A (33%)', 'B (33%)', 'C (33%)'] do
+  begin
+    Assert.AreEqual<TAlphaColor>(ChartTextDark, SegmentLabelCall(Text).TextStyle.Color,
+      Format('A minimum of 1 keeps one text color throughout, so "%s" must stay dark', [Text]));
+  end;
 end;
 
 end.

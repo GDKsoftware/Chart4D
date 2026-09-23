@@ -2683,9 +2683,9 @@ procedure TCircularSeriesRenderer.DrawSegmentLabel(const AnchorPoint: TPointF; c
 begin
   { A segment label sits on its own wedge, so what is behind the text is the label box
     composited over that wedge: the box itself when it is opaque, the wedge when there is no
-    box. The style's text color is kept wherever it reads at least as well as white. }
+    box. The style's text color is kept while it reaches the style's minimum contrast there. }
   const Behind = TChartColors.Blend(FStyle.LabelBackgroundColor, WedgeColor);
-  const TextColor = TChartColors.ReadableTextColor(FStyle.TextColor, Behind);
+  const TextColor = TChartColors.ReadableTextColor(FStyle.TextColor, Behind, FStyle.MinimumTextContrast);
   const TextStyle = TChartTextStyle.Create(FStyle.FontName, FStyle.AxisFontSize, False, TextColor);
   FLabelPlacer.DrawIfClear(AnchorPoint, LabelText, TextStyle);
 end;

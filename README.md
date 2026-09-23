@@ -131,9 +131,11 @@ Style.LabelBackgroundColor := TAlphaColors.Null;  // no box; ChartLabelBackgroun
 Plot.Style := Style;
 ```
 
-A segment label then picks dark or white text, whichever reads better on its own wedge.
-Value labels and text annotations use the same box color; the hover tooltip always keeps
-its white box.
+A segment label then keeps the style's text color while it reaches `MinimumTextContrast`
+against its own wedge (4.5 by default, the WCAG AA level), and only below that takes
+whichever of the text color and white reads better. Set it to 3 to keep dark text on
+mid-tone wedges, or to 1 to never switch. Value labels and text annotations use the same
+box color; the hover tooltip always keeps its white box.
 
 To argue one point while still showing context, mute everything except one series:
 

@@ -264,6 +264,7 @@ type
     MaxBubbleRadius: Single;         // 24, see 4.19
     DonutInnerRadiusFactor: Single;  // 0.6, see 4.24
     LabelBackgroundColor: TAlphaColor; // ChartLabelBackground, see 4.29
+    MinimumTextContrast: Double;       // 4.5, see 4.29
     class function Default: TChartStyle; static;
   end;
 
@@ -271,16 +272,22 @@ type
     class function Blend(const Over, Under: TAlphaColor): TAlphaColor; static;
     class function RelativeLuminance(const Color: TAlphaColor): Double; static;
     class function ContrastRatio(const First, Second: TAlphaColor): Double; static;
-    class function ReadableTextColor(const Preferred, Background: TAlphaColor): TAlphaColor; static;
+    class function ReadableTextColor(const Preferred, Background: TAlphaColor;
+                                     const MinimumContrast: Double = MaximumContrastRatio): TAlphaColor; static;
   end;
 ```
+
+`MaximumContrastRatio = 21.0` (black against white) is declared alongside.
 
 `TChartColors` is the color arithmetic behind legible label text (4.29): `Blend`
 composites `Over` onto `Under` with the "over" operator, `RelativeLuminance` and
 `ContrastRatio` are the WCAG 2 definitions (sRGB channels linearized, weights 0.2126,
 0.7152, 0.0722; ratio `(L1 + 0.05) / (L2 + 0.05)` with `L1` the lighter), and
-`ReadableTextColor` returns `Preferred` unless white has the higher contrast ratio against
-`Background`, in which case it returns white.
+`ReadableTextColor` returns `Preferred` when its contrast ratio against `Background` is at
+least `MinimumContrast`, and otherwise whichever of `Preferred` and white has the higher
+ratio, `Preferred` on a tie. With the default `MaximumContrastRatio` only black on white
+reaches the minimum, and there `Preferred` is also the better of the two, so the default
+always returns the more legible color; a minimum of 1 or less always returns `Preferred`.
 
 ### 4.4 Chart4D.Series.pas
 
@@ -1763,14 +1770,41 @@ to contrast with, and a transparent tooltip would be unreadable. It keeps
 
 **Text color.** A segment label sits on its own wedge, so what is behind its text is known:
 `TChartColors.Blend(LabelBackgroundColor, CategoryColor(i))`. Its text color is
-`TChartColors.ReadableTextColor(TextColor, Behind)`: the style's `TextColor` wherever it
-contrasts at least as well as white, and white on a wedge too dark for it. With the default
-opaque white box, `Behind` is white, so every label keeps `TextColor` exactly as before;
-with no box, the text contrasts with the wedge itself, so the default dark text turns white
-on the palette's blue and dark red and stays dark on its orange. A label clamped partly off
+`TChartColors.ReadableTextColor(TextColor, Behind, MinimumTextContrast)`: the style's
+`TextColor` as long as its WCAG contrast ratio against `Behind` reaches
+`MinimumTextContrast`, and below that whichever of `TextColor` and white reads better. With
+the default opaque white box, `Behind` is white, so every label keeps `TextColor` exactly
+as before; with no box, the text contrasts with the wedge itself. A label clamped partly off
 its wedge is still judged against its own wedge. Value labels and annotations keep
 `TextColor` whatever the background, since 4.12 already places value labels off the ink
 and an annotation has its own color.
+
+**Minimum text contrast.** `TChartStyle` carries `MinimumTextContrast: Double`, default
+4.5, the WCAG AA minimum for normal text. It lets a chart keep one text color, or switch
+only where that color would really be unreadable, rather than wherever white happens to
+read better. On the palette with the default dark text (luminance about 0.016) and no box:
+
+- 1 never switches, one text color throughout. A zeroed record's 0 does the same, so a
+  `TChartStyle` built without `Default` never switches; that is acceptable, but it is why a
+  style should start from `TChartStyle.Default` or `Plot.Style`.
+- 3, the WCAG minimum for large text, keeps the dark text on blue and green (about 3.5 to 1
+  there, against about 4.5 for white) and turns only dark red and darker wedges white.
+- 4.5, the default, turns blue, green and dark red white and keeps orange dark.
+
+The default changes nothing for the default text color. Keeping `TextColor` at the minimum
+can only differ from taking the more legible of the two where `TextColor` reaches the
+minimum while white reads better still, and that needs one of two things. Either both
+`TextColor` and white reach the minimum `T` on a background lighter than the text, which is
+possible only when the text's luminance is below `1.05 / T² - 0.05`; or `TextColor` reaches
+`T` on a background darker than itself, where white always reads better, which is possible
+only when its luminance is at least `0.05 * T - 0.05`. At 4.5 that makes the default exactly
+the "more legible" rule for any `TextColor` of luminance from about 0.0019 up to, but not
+including, 0.175: the greys from `#070707` to `#747474`, which includes the default
+`#222222`. Outside that band the default can keep the text color on a narrow band of
+backgrounds where white would have read slightly better: pure black text on greys around
+`#757575`, where black and white both reach about 4.6 to 1, and a light text color such as
+`#767676` on black. `MaximumContrastRatio` restores the plain "more legible" rule for any
+text color.
 
 ## 5. Tests (Tests\, DUnitX)
 
@@ -1800,7 +1834,12 @@ read from the `BDS` environment variable, defaulting to
   among them; and `TChartColors` (4.3): an opaque color blends to itself and a transparent
   one to what is under it, half-transparent white over black is mid grey, black against
   white contrasts 21 to 1 either way round, and `ReadableTextColor` gives white on dark red
-  and keeps the dark text on orange.
+  and keeps the dark text on orange; with a minimum text contrast, 1 never switches on any
+  palette color or black, 3 keeps the dark text on blue and green but not on dark red, and
+  4.5 turns blue and green white; the default minimum `MinimumTextContrast` is 4.5, and for
+  the default dark text it matches the plain "more legible" rule on every grey and on an
+  RGB grid in steps of 15; and the two limits of that band are pinned, black text keeping
+  black on `#757575` and `#767676` text keeping itself on black, where white reads better.
 - `Chart4D.Invariants.Tests.pas`: boundary and ink invariants for `TChartRenderer`,
   reasoning geometrically over a `TRecordingCanvas` for every chart kind: no recorded
   call may draw outside the bitmap, none may land inside the outer margin (other than
@@ -1904,7 +1943,9 @@ read from the `BDS` environment variable, defaulting to
   three segments. By default every label sits on a white box in the dark text color; a custom
   opaque `LabelBackgroundColor` replaces the white box; a transparent one draws the text with
   no box at all, turns it white on the blue and dark red wedges and keeps it dark on the
-  orange one, and still drops the colliding 1% label.
+  orange one, and still drops the colliding 1% label. With no box, a `MinimumTextContrast` of
+  3 keeps the dark text on the blue wedge and turns only the dark red one white, and 1 keeps
+  the dark text on every wedge.
 
 - `Chart4D.Catalog.Tests.pas`: for the shared demo catalogue
   (`Examples\Common\Chart4DDemo.Catalog.pas`, 7), the numbers and names parsed back out of
