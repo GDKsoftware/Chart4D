@@ -180,21 +180,23 @@ type
   end;
 
   /// <summary>
-  /// Draws labels that sit on top of chart ink, each on its own <c>ChartLabelBackground</c>
-  /// box: it sizes the box around the measured text, shifts it back inside the clamp
-  /// bounds when it would stick out, and remembers where every box landed so a later label
-  /// can be dropped rather than drawn over an earlier one.
+  /// Draws labels that sit on top of chart ink, each on its own box in the style's
+  /// <c>LabelBackgroundColor</c>: it sizes the box around the measured text, shifts it back
+  /// inside the clamp bounds when it would stick out, and remembers where every box landed
+  /// so a later label can be dropped rather than drawn over an earlier one. A fully
+  /// transparent background draws no box, but the box still counts as taken.
   /// </summary>
   /// <remarks>
-  /// The single implementation of the white-box label convention (see SPEC.md 4.12),
-  /// shared by value labels, <c>TextLabel</c> annotations and pie/donut segment labels.
-  /// One instance covers one group of labels that compete for space; two groups drawn in
-  /// separate passes each get their own instance and so never crowd each other out.
+  /// The single implementation of the label-box convention (see SPEC.md 4.12), shared by
+  /// value labels, <c>TextLabel</c> annotations and pie/donut segment labels. One instance
+  /// covers one group of labels that compete for space; two groups drawn in separate
+  /// passes each get their own instance and so never crowd each other out.
   /// </remarks>
   TChartLabelPlacer = class
   private
     FCanvas: IChartCanvas;
     FScaleFactor: Single;
+    FBackgroundColor: TAlphaColor;
     FClampBounds: TRectF;
     FPlacedBoxes: TArray<TRectF>;
 
@@ -207,10 +209,11 @@ type
                     const SkipWhenOverlapping: Boolean);
   public
     /// <summary>
-    /// Creates a placer that draws on <c>Canvas</c> and keeps every label box inside
+    /// Creates a placer that draws on <c>Canvas</c> at <c>Style.ScaleFactor</c>, fills
+    /// label boxes with <c>Style.LabelBackgroundColor</c>, and keeps every box inside
     /// <c>ClampBounds</c>.
     /// </summary>
-    constructor Create(const Canvas: IChartCanvas; const ScaleFactor: Single; const ClampBounds: TRectF);
+    constructor Create(const Canvas: IChartCanvas; const Style: TChartStyle; const ClampBounds: TRectF);
 
     /// <summary>Draws a label, clamped into bounds, whatever is already there.</summary>
     procedure Draw(const AnchorPoint: TPointF; const LabelText: string;
@@ -734,7 +737,8 @@ type
     function SegmentLabelDistance(const InnerRadius, OuterRadius: Single; const IsDonut: Boolean): Single;
     function PointAtAngle(const Center: TPointF; const Distance, AngleDegrees: Single): TPointF;
     procedure DrawCenterText(const Center: TPointF);
-    procedure DrawSegmentLabel(const AnchorPoint: TPointF; const LabelText: string);
+    procedure DrawSegmentLabel(const AnchorPoint: TPointF; const LabelText: string;
+                               const WedgeColor: TAlphaColor);
   public
     constructor Create(const Context: TChartDrawContext); override;
     destructor Destroy; override;
@@ -994,12 +998,13 @@ begin
   end;
 end;
 
-constructor TChartLabelPlacer.Create(const Canvas: IChartCanvas; const ScaleFactor: Single;
+constructor TChartLabelPlacer.Create(const Canvas: IChartCanvas; const Style: TChartStyle;
                                      const ClampBounds: TRectF);
 begin
   inherited Create;
   FCanvas := Canvas;
-  FScaleFactor := ScaleFactor;
+  FScaleFactor := Style.ScaleFactor;
+  FBackgroundColor := Style.LabelBackgroundColor;
   FClampBounds := ClampBounds;
 end;
 
@@ -1028,7 +1033,9 @@ begin
   if SkipWhenOverlapping and IntersectsPlaced(Background) then
     Exit;
 
-  FCanvas.FillRect(Background, ChartLabelBackground);
+  const HasVisibleBox = (TAlphaColorRec(FBackgroundColor).A > 0);
+  if HasVisibleBox then
+    FCanvas.FillRect(Background, FBackgroundColor);
   FCanvas.DrawText(AnchorPoint.X + Shift.X, AnchorPoint.Y + Shift.Y, LabelText, TextStyle,
                    AlignH, TTextAlignV.Middle);
 
@@ -2477,7 +2484,7 @@ end;
 constructor TCircularSeriesRenderer.Create(const Context: TChartDrawContext);
 begin
   inherited Create(Context);
-  FLabelPlacer := TChartLabelPlacer.Create(Context.Canvas, Context.Style.ScaleFactor, Context.LabelClampBounds);
+  FLabelPlacer := TChartLabelPlacer.Create(Context.Canvas, Context.Style, Context.LabelClampBounds);
 end;
 
 destructor TCircularSeriesRenderer.Destroy;
@@ -2622,7 +2629,8 @@ end;
 
 procedure TCircularSeriesRenderer.DrawWedgeLabel(const Wedge: TPieWedge; const Frame: TPieFrame);
 begin
-  DrawSegmentLabel(SegmentLabelPoint(Wedge, Frame), SegmentLabelText(Wedge, Frame));
+  DrawSegmentLabel(SegmentLabelPoint(Wedge, Frame), SegmentLabelText(Wedge, Frame),
+                   FPlot.CategoryColor(Wedge.CategoryIndex));
 end;
 
 function TCircularSeriesRenderer.SegmentLabelText(const Wedge: TPieWedge; const Frame: TPieFrame): string;
@@ -2670,9 +2678,15 @@ begin
   FCanvas.DrawText(Center.X, Center.Y, FPlot.DonutCenterText, TextStyle, TTextAlignH.Center, TTextAlignV.Middle);
 end;
 
-procedure TCircularSeriesRenderer.DrawSegmentLabel(const AnchorPoint: TPointF; const LabelText: string);
+procedure TCircularSeriesRenderer.DrawSegmentLabel(const AnchorPoint: TPointF; const LabelText: string;
+                                                   const WedgeColor: TAlphaColor);
 begin
-  const TextStyle = TChartTextStyle.Create(FStyle.FontName, FStyle.AxisFontSize, False, FStyle.TextColor);
+  { A segment label sits on its own wedge, so what is behind the text is the label box
+    composited over that wedge: the box itself when it is opaque, the wedge when there is no
+    box. The style's text color is kept wherever it reads at least as well as white. }
+  const Behind = TChartColors.Blend(FStyle.LabelBackgroundColor, WedgeColor);
+  const TextColor = TChartColors.ReadableTextColor(FStyle.TextColor, Behind);
+  const TextStyle = TChartTextStyle.Create(FStyle.FontName, FStyle.AxisFontSize, False, TextColor);
   FLabelPlacer.DrawIfClear(AnchorPoint, LabelText, TextStyle);
 end;
 
@@ -3666,7 +3680,7 @@ begin
   if HasNoLabels then
     Exit;
 
-  const Placer = TChartLabelPlacer.Create(FCanvas, FStyle.ScaleFactor, ValueLabelClampBounds);
+  const Placer = TChartLabelPlacer.Create(FCanvas, FStyle, ValueLabelClampBounds);
   try
     for var Group in FSeriesRenderer.BuildValueLabelGroups do
     begin
@@ -3734,7 +3748,7 @@ end;
 
 procedure TChartRenderJob.DrawAnnotations;
 begin
-  const Placer = TChartLabelPlacer.Create(FCanvas, FStyle.ScaleFactor, MarginBounds);
+  const Placer = TChartLabelPlacer.Create(FCanvas, FStyle, MarginBounds);
   try
     for var Annotation in FPlot.Annotations do
     begin

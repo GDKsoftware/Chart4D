@@ -122,6 +122,19 @@ Plot.SegmentLabels := TSegmentLabelMode.Percentage;  // CategoryAndPercentage, P
 
 Where two segment labels would collide, the larger segment keeps its label.
 
+Labels sit on an opaque white box by default. The box color is part of the style, and a
+transparent one puts the text straight on the ink:
+
+```pascal
+var Style := Plot.Style;
+Style.LabelBackgroundColor := TAlphaColors.Null;  // no box; ChartLabelBackground restores it
+Plot.Style := Style;
+```
+
+A segment label then picks dark or white text, whichever reads better on its own wedge.
+Value labels and text annotations use the same box color; the hover tooltip always keeps
+its white box.
+
 To argue one point while still showing context, mute everything except one series:
 
 ```pascal

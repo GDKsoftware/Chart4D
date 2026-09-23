@@ -72,6 +72,34 @@ type
 
     [Test]
     procedure Default_DonutInnerRadiusFactor_IsPointSix;
+
+    [Test]
+    procedure Default_LabelBackgroundColor_IsOpaqueWhite;
+  end;
+
+  [TestFixture]
+  TChartColorsTests = class
+  public
+    [Test]
+    procedure Blend_OpaqueOver_ReturnsOver;
+
+    [Test]
+    procedure Blend_FullyTransparentOver_ReturnsUnder;
+
+    [Test]
+    procedure Blend_HalfTransparentWhiteOverBlack_ReturnsMidGrey;
+
+    [Test]
+    procedure ContrastRatio_BlackAgainstWhite_IsTwentyOne;
+
+    [Test]
+    procedure ContrastRatio_SwappedArguments_IsTheSame;
+
+    [Test]
+    procedure ReadableTextColor_DarkBackground_ReturnsWhite;
+
+    [Test]
+    procedure ReadableTextColor_LightBackground_KeepsThePreferredColor;
   end;
 
 implementation
@@ -162,6 +190,57 @@ end;
 procedure TChartStyleDefaultTests.Default_DonutInnerRadiusFactor_IsPointSix;
 begin
   Assert.AreEqual<Single>(0.6, FStyle.DonutInnerRadiusFactor);
+end;
+
+procedure TChartStyleDefaultTests.Default_LabelBackgroundColor_IsOpaqueWhite;
+begin
+  Assert.AreEqual<TAlphaColor>(ChartLabelBackground, FStyle.LabelBackgroundColor,
+    'Labels must keep the opaque white box they always had until a caller changes it');
+end;
+
+procedure TChartColorsTests.Blend_OpaqueOver_ReturnsOver;
+begin
+  Assert.AreEqual<TAlphaColor>(ChartOrange, TChartColors.Blend(ChartOrange, ChartBlue));
+end;
+
+procedure TChartColorsTests.Blend_FullyTransparentOver_ReturnsUnder;
+begin
+  Assert.AreEqual<TAlphaColor>(ChartBlue, TChartColors.Blend(TAlphaColors.Null, ChartBlue));
+end;
+
+procedure TChartColorsTests.Blend_HalfTransparentWhiteOverBlack_ReturnsMidGrey;
+begin
+  const HalfWhite = TAlphaColor($80FFFFFF);
+
+  const Blended = TChartColors.Blend(HalfWhite, TAlphaColors.Black);
+
+  Assert.AreEqual<TAlphaColor>(TAlphaColor($FF808080), Blended,
+    'Half-transparent white over opaque black is an opaque mid grey');
+end;
+
+procedure TChartColorsTests.ContrastRatio_BlackAgainstWhite_IsTwentyOne;
+begin
+  Assert.AreEqual(21.0, TChartColors.ContrastRatio(TAlphaColors.Black, TAlphaColors.White), 0.0001);
+end;
+
+procedure TChartColorsTests.ContrastRatio_SwappedArguments_IsTheSame;
+begin
+  const Forward = TChartColors.ContrastRatio(ChartBlue, ChartOrange);
+  const Backward = TChartColors.ContrastRatio(ChartOrange, ChartBlue);
+
+  Assert.AreEqual(Forward, Backward, 0.0001);
+end;
+
+procedure TChartColorsTests.ReadableTextColor_DarkBackground_ReturnsWhite;
+begin
+  { Dark red: white contrasts about 8.9 to 1, the default dark text only about 1.8. }
+  Assert.AreEqual<TAlphaColor>(TAlphaColors.White, TChartColors.ReadableTextColor(ChartTextDark, ChartDarkRed));
+end;
+
+procedure TChartColorsTests.ReadableTextColor_LightBackground_KeepsThePreferredColor;
+begin
+  { Orange: the default dark text contrasts about 8.3 to 1, white only about 1.9. }
+  Assert.AreEqual<TAlphaColor>(ChartTextDark, TChartColors.ReadableTextColor(ChartTextDark, ChartOrange));
 end;
 
 end.

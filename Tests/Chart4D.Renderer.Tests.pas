@@ -164,6 +164,9 @@ type
     procedure Render_PieChartTextAnnotation_DrawsAtCategoryIndexAndPlotHeightFraction;
 
     [Test]
+    procedure Render_TextAnnotation_UsesTheStyleLabelBackgroundColor;
+
+    [Test]
     procedure Render_DonutChartTextAnnotation_DrawsAtCategoryIndexAndPlotHeightFraction;
 
     [Test]
@@ -1297,6 +1300,30 @@ begin
     end;
 
     Assert.IsTrue(FoundAtCenter, 'DonutCenterText must be drawn at the computed center');
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_TextAnnotation_UsesTheStyleLabelBackgroundColor;
+begin
+  const Cream = TAlphaColor($FFFFF3C4);
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Bar;
+    Plot.Categories := ['A', 'B'];
+    Plot.AddSeries('Only', [10, 20]);
+    Plot.AddTextAnnotation(0, 15, 'Callout', ChartTextDark, TTextAlignH.Center);
+
+    var Style := Plot.Style;
+    Style.LabelBackgroundColor := Cream;
+    Plot.Style := Style;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    Assert.AreEqual(1, FRecordingCanvas.CountOfColor(TCanvasCallKind.FillRect, Cream),
+      'A text annotation shares the label-box convention, so it takes the style''s box color');
+    Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('Callout'));
   finally
     Plot.Free;
   end;
