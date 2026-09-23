@@ -113,6 +113,15 @@ Labels are placed automatically, moved inside the plot when they would cover an 
 and skipped when they would collide with a label already drawn. The result is deterministic,
 so a chart looks the same on every run.
 
+Pie and donut segments label themselves, "Fossil (70%)" by default. When the legend already
+names the categories, show the share alone:
+
+```pascal
+Plot.SegmentLabels := TSegmentLabelMode.Percentage;  // CategoryAndPercentage, Percentage, Category, None
+```
+
+Where two segment labels would collide, the larger segment keeps its label.
+
 To argue one point while still showing context, mute everything except one series:
 
 ```pascal

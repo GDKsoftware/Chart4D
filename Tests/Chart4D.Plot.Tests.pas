@@ -125,6 +125,9 @@ type
 
     [Test]
     procedure DonutCenterText_Default_IsEmpty;
+
+    [Test]
+    procedure SegmentLabels_Default_IsCategoryAndPercentage;
   end;
 
   [TestFixture]
@@ -164,6 +167,9 @@ type
 
     [Test]
     procedure SetDonutCenterText_Called_FiresOnChanged;
+
+    [Test]
+    procedure SetSegmentLabels_Called_FiresOnChanged;
   end;
 
   [TestFixture]
@@ -460,6 +466,12 @@ begin
   Assert.AreEqual('', FPlot.DonutCenterText);
 end;
 
+procedure TChartPlotLifecycleTests.SegmentLabels_Default_IsCategoryAndPercentage;
+begin
+  Assert.AreEqual<TSegmentLabelMode>(TSegmentLabelMode.CategoryAndPercentage, FPlot.SegmentLabels,
+    'A pie must keep the "Category (n%)" labels it always had until a caller opts out');
+end;
+
 procedure TChartPlotOnChangedTests.Setup;
 begin
   FPlot := TChartPlot.Create;
@@ -533,6 +545,13 @@ end;
 procedure TChartPlotOnChangedTests.SetDonutCenterText_Called_FiresOnChanged;
 begin
   FPlot.DonutCenterText := 'Total: 1,234';
+
+  Assert.AreEqual(1, FChangedCount);
+end;
+
+procedure TChartPlotOnChangedTests.SetSegmentLabels_Called_FiresOnChanged;
+begin
+  FPlot.SegmentLabels := TSegmentLabelMode.Percentage;
 
   Assert.AreEqual(1, FChangedCount);
 end;

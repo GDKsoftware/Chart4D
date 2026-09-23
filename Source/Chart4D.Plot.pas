@@ -50,6 +50,7 @@ type
     FLegendReversed: Boolean;
     FAnnotations: TArray<TChartAnnotation>;
     FValueLabels: TValueLabelMode;
+    FSegmentLabels: TSegmentLabelMode;
     FHighlightedSeriesIndex: Integer;
     FDonutCenterText: string;
     FOnChanged: TNotifyEvent;
@@ -68,6 +69,7 @@ type
     procedure SetLegendPosition(const Value: TLegendPosition);
     procedure SetLegendReversed(const Value: Boolean);
     procedure SetValueLabels(const Value: TValueLabelMode);
+    procedure SetSegmentLabels(const Value: TSegmentLabelMode);
     procedure SetHighlightedSeriesIndex(const Value: Integer);
     procedure SetDonutCenterText(const Value: string);
 
@@ -208,6 +210,12 @@ type
     /// <summary>Which data points get a built-in value label. Default <c>None</c>.</summary>
     property ValueLabels: TValueLabelMode read FValueLabels write SetValueLabels;
     /// <summary>
+    /// What each segment label of a <c>Pie</c> or <c>Donut</c> chart shows. Default
+    /// <c>CategoryAndPercentage</c>. Meaningful only for those two kinds; a <c>None</c>
+    /// chart draws no segment labels but keeps its hover tooltips.
+    /// </summary>
+    property SegmentLabels: TSegmentLabelMode read FSegmentLabels write SetSegmentLabels;
+    /// <summary>
     /// The index of the series drawn in its own color while every other series is muted
     /// to <c>ChartLightGrey</c>, or -1 (default) to draw every series in its own color.
     /// </summary>
@@ -298,6 +306,7 @@ begin
   FStackMode := TStackMode.Values;
   FLegendPosition := TLegendPosition.Top;
   FValueLabels := TValueLabelMode.None;
+  FSegmentLabels := TSegmentLabelMode.CategoryAndPercentage;
   FHighlightedSeriesIndex := -1;
 end;
 
@@ -602,6 +611,12 @@ end;
 procedure TChartPlot.SetValueLabels(const Value: TValueLabelMode);
 begin
   FValueLabels := Value;
+  NotifyChanged;
+end;
+
+procedure TChartPlot.SetSegmentLabels(const Value: TSegmentLabelMode);
+begin
+  FSegmentLabels := Value;
   NotifyChanged;
 end;
 

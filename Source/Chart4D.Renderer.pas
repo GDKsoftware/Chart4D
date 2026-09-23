@@ -729,6 +729,7 @@ type
     function LabelOrder(const Wedges: TArray<TPieWedge>): TArray<TPieWedge>;
     procedure DrawWedge(const Wedge: TPieWedge; const Frame: TPieFrame);
     procedure DrawWedgeLabel(const Wedge: TPieWedge; const Frame: TPieFrame);
+    function SegmentLabelText(const Wedge: TPieWedge; const Frame: TPieFrame): string;
     function SegmentLabelPoint(const Wedge: TPieWedge; const Frame: TPieFrame): TPointF;
     function SegmentLabelDistance(const InnerRadius, OuterRadius: Single; const IsDonut: Boolean): Single;
     function PointAtAngle(const Center: TPointF; const Distance, AngleDegrees: Single): TPointF;
@@ -2503,8 +2504,12 @@ begin
   for var Wedge in Wedges do
     DrawWedge(Wedge, Frame);
 
-  for var Wedge in LabelOrder(Wedges) do
-    DrawWedgeLabel(Wedge, Frame);
+  const HasSegmentLabels = (FPlot.SegmentLabels <> TSegmentLabelMode.None);
+  if HasSegmentLabels then
+  begin
+    for var Wedge in LabelOrder(Wedges) do
+      DrawWedgeLabel(Wedge, Frame);
+  end;
 
   if Frame.IsDonut then
     DrawCenterText(Frame.Center);
@@ -2617,9 +2622,21 @@ end;
 
 procedure TCircularSeriesRenderer.DrawWedgeLabel(const Wedge: TPieWedge; const Frame: TPieFrame);
 begin
-  const LabelText = Format('%s (%s)', [CategoryLabel(Wedge.CategoryIndex),
-                                       TAxisScale.FormatPercentage(Wedge.Value / Frame.Total, FPlot.YAxis)]);
-  DrawSegmentLabel(SegmentLabelPoint(Wedge, Frame), LabelText);
+  DrawSegmentLabel(SegmentLabelPoint(Wedge, Frame), SegmentLabelText(Wedge, Frame));
+end;
+
+function TCircularSeriesRenderer.SegmentLabelText(const Wedge: TPieWedge; const Frame: TPieFrame): string;
+begin
+  const CategoryText = CategoryLabel(Wedge.CategoryIndex);
+  const PercentageText = TAxisScale.FormatPercentage(Wedge.Value / Frame.Total, FPlot.YAxis);
+
+  case FPlot.SegmentLabels of
+    TSegmentLabelMode.CategoryAndPercentage : Result := Format('%s (%s)', [CategoryText, PercentageText]);
+    TSegmentLabelMode.Percentage            : Result := PercentageText;
+    TSegmentLabelMode.Category              : Result := CategoryText;
+  else
+    raise ENotSupportedException.CreateFmt('Unsupported segment label mode: %d', [Ord(FPlot.SegmentLabels)]);
+  end;
 end;
 
 function TCircularSeriesRenderer.SegmentLabelPoint(const Wedge: TPieWedge; const Frame: TPieFrame): TPointF;

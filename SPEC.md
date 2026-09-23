@@ -493,6 +493,7 @@ type
     property LegendReversed: Boolean ...;
     property Annotations: TArray<TChartAnnotation> read ...;
     property ValueLabels: TValueLabelMode ...;         // default None; see 4.12
+    property SegmentLabels: TSegmentLabelMode ...;     // default CategoryAndPercentage; see 4.29
     property HighlightedSeriesIndex: Integer ...;      // default -1; see 4.13
     property DonutCenterText: string ...;              // default ''; Donut only, see 4.24
     property OnChanged: TNotifyEvent ...;
@@ -1398,7 +1399,8 @@ last point back to the first, back to `Center`.
 effect on `Pie`/`Donut`): for each wedge with a non-zero sweep angle, at the wedge's
 mid-angle (`StartAngle + SweepAngle / 2`) and `0.65 * OuterRadius` from center, text
 `Format('%s (%s)', [Categories[i], TAxisScale.FormatPercentage(Values[i] / Total, YAxis)])`,
-which is a whole percent unless `YAxis.Decimals` asks for decimals (4.27), with the same
+which is a whole percent unless `YAxis.Decimals` asks for decimals (4.27), or the share or
+the category alone, or no label at all, as `SegmentLabels` selects (4.29), with the same
 white background box as a value label (4.12), and the exact same deterministic
 overlap-avoidance rule from 4.12 (skip a candidate whose clamped box intersects an
 already-drawn one), with its fixed order being the segments by value, largest first, and
@@ -1559,7 +1561,8 @@ type
 A chart control dropped on a form has no series yet, so it would paint nothing and leave
 the developer looking at an empty rectangle. `TChartPreview.FillFrom` clears `Preview`,
 copies every single-value setting from `Settings` (kind, the three texts, style, both axes,
-orientation, stack mode, legend position and direction, value labels, donut centre text)
+orientation, stack mode, legend position and direction, value labels, segment labels,
+donut centre text)
 and fills it with sample data for the kind that was copied: an X value per Y value for
 `Scatter`, both ends of every span for `Dumbbell`, `Range` and `Arrow`, and categories with
 one series, or two for `GroupedBar` and `StackedBar`, for every other kind.
@@ -1692,6 +1695,33 @@ set, whether or not any label actually reaches the second row, so the plot area 
 grow and shrink by a line of text as the data or the window size changes; a caller who
 wants the line back leaves the axis at `SingleRow`.
 
+### 4.29 Segment label options
+
+In `Chart4D.Types.pas`:
+
+```pascal
+{$SCOPEDENUMS ON}
+type
+  TSegmentLabelMode = (CategoryAndPercentage, Percentage, Category, None);
+{$SCOPEDENUMS OFF}
+```
+
+`TChartPlot` carries `SegmentLabels: TSegmentLabelMode`, default `CategoryAndPercentage`
+(4.7), which picks what each `Pie`/`Donut` segment label (4.23) shows:
+
+- `CategoryAndPercentage`: `'Fossil (70%)'`, the only form before this setting existed.
+- `Percentage`: `'70%'`, for a chart whose legend already names the categories, where the
+  name in every label only repeats it.
+- `Category`: `'Fossil'`.
+- `None`: no segment labels at all. The wedges still get their hit targets, anchored where
+  the label would have been, so hover and tooltips work as before.
+
+The default is listed first so that a zeroed field already means it. The percentage follows
+`YAxis.Decimals` in every mode that shows one (4.27). Whatever the mode, a label is placed
+and dropped by the rule of 4.23: after every wedge, largest segment first, skipping one
+that collides with a label already drawn, so a shorter label only lets more of them fit.
+Other chart kinds ignore the setting.
+
 ## 5. Tests (Tests\, DUnitX)
 
 Console project `Chart4D.Tests.dpr` + `build.bat` (dcc32; the RAD Studio location is
@@ -1733,7 +1763,7 @@ read from the `BDS` environment variable, defaulting to
   and outer radius and within its angular span, including a case straddling the 0/360
   wraparound, and misses when outside either bound.
 - `Chart4D.Preview.Tests.pas`: `TChartPreview.FillFrom` (4.26) carries the text and layout
-  settings over, gives a scatter series its X values and a range series its end values,
+  settings over, `SegmentLabels` among them (4.29), gives a scatter series its X values and a range series its end values,
   adds a second series for `GroupedBar`, and refilling replaces the sample instead of
   adding to it.
 - `Chart4D.View.Tests.pas`: against a `TRecordingCanvas`, `TChartView.Render` (4.25) draws on
@@ -1762,7 +1792,8 @@ read from the `BDS` environment variable, defaulting to
   index except `HighlightedSeriesIndex`, and is unchanged at `-1` (4.13); `AddRangeSeries`/
   `AddArrowSeries` set `Kind`/`Orientation`/`Values`/`EndValues` like `AddDumbbellSeries`;
   `AddRangeBandSeries` appends (does not clear) and sets `IsRangeBand`; `CategoryColor`
-  cycles the palette by category index (4.7).
+  cycles the palette by category index (4.7); `SegmentLabels` defaults to
+  `CategoryAndPercentage` and setting it fires `OnChanged` (4.29).
 - `Chart4D.Renderer.Tests.pas` also covers, each against a `TRecordingCanvas`: a logarithmic
   axis renders breaks at powers of the base and raises `EChart4DException` for a
   non-positive value (4.15); a date axis with `DateMode = Auto` picks the expected
@@ -1809,7 +1840,10 @@ read from the `BDS` environment variable, defaulting to
   donut comes after the last wedge, so no wedge can be drawn over a label. On a pie whose
   1% and 8% segments sit side by side ahead of a 91% one, the 8% label is kept and the
   colliding 1% label is the one dropped; of two equal, colliding segments the earlier
-  category keeps its label.
+  category keeps its label. On a pie of three equal segments with no legend, each
+  `SegmentLabels` mode of 4.29 draws exactly its own text: `'A (33%)'`, `'33%'` alone or
+  `'A'` alone, and `None` draws no text and no label box while the hit map still holds all
+  three segments.
 
 - `Chart4D.Catalog.Tests.pas`: for the shared demo catalogue
   (`Examples\Common\Chart4DDemo.Catalog.pas`, 7), the numbers and names parsed back out of

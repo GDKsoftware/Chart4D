@@ -93,6 +93,14 @@ type
   TCategoryLabelLayout = (SingleRow, Staggered);
 
   /// <summary>
+  /// What a <c>Pie</c> or <c>Donut</c> segment label shows: the category and its share
+  /// ("Fossil (70%)"), the share alone, the category alone, or no label at all. The share
+  /// alone suits a chart whose legend already names the categories. Default
+  /// <c>CategoryAndPercentage</c>, listed first so a zeroed field already means the default.
+  /// </summary>
+  TSegmentLabelMode = (CategoryAndPercentage, Percentage, Category, None);
+
+  /// <summary>
   /// A single annotation drawn on top of a chart's series: a text label, a segment,
   /// an arrow, or a full-width horizontal/vertical reference line.
   /// </summary>

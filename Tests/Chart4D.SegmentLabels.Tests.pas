@@ -34,7 +34,9 @@ type
 
     procedure RenderPie(const Kind: TChartKind; const Categories: TArray<string>;
                         const Values: TArray<Double>);
+    function RenderThirds(const Mode: TSegmentLabelMode): TArray<TChartHitTarget>;
     function LastCallIndexOfKind(const Kind: TCanvasCallKind): Integer;
+    function CountOfText(const Text: string): Integer;
     procedure AssertEveryLabelDrawnAfterTheLastWedge;
 
   public
@@ -55,6 +57,18 @@ type
 
     [Test]
     procedure PieChart_EqualSegmentsThatCollide_KeepTheEarlierCategory;
+
+    [Test]
+    procedure SegmentLabels_CategoryAndPercentage_ShowsBoth;
+
+    [Test]
+    procedure SegmentLabels_Percentage_ShowsTheShareAlone;
+
+    [Test]
+    procedure SegmentLabels_Category_ShowsTheCategoryAlone;
+
+    [Test]
+    procedure SegmentLabels_None_DrawsNoLabelsButKeepsTheHitTargets;
   end;
 
 implementation
@@ -92,6 +106,37 @@ begin
     TChartRenderer.Render(Plot, FCanvas, ChartWidth, ChartHeight);
   finally
     Plot.Free;
+  end;
+end;
+
+/// <summary>
+/// Renders a pie of three equal segments, far enough apart that no label collides, with the
+/// given label mode and no legend, so any category name or share in the output comes from a
+/// segment label. Returns the hit map.
+/// </summary>
+function TSegmentLabelTests.RenderThirds(const Mode: TSegmentLabelMode): TArray<TChartHitTarget>;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Pie;
+    Plot.LegendPosition := TLegendPosition.None;
+    Plot.Categories := ['A', 'B', 'C'];
+    Plot.AddSeries('Share', [1, 1, 1]);
+    Plot.SegmentLabels := Mode;
+
+    TChartRenderer.Render(Plot, FCanvas, ChartWidth, ChartHeight, Result);
+  finally
+    Plot.Free;
+  end;
+end;
+
+function TSegmentLabelTests.CountOfText(const Text: string): Integer;
+begin
+  Result := 0;
+  for var Call in FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawText) do
+  begin
+    if Call.Text = Text then
+      Inc(Result);
   end;
 end;
 
@@ -171,6 +216,47 @@ begin
   Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('A (4%)'), 'The earlier of two equal segments keeps its label');
   Assert.IsFalse(FRecordingCanvas.HasTextEqualTo('B (4%)'),
     'The later of two equal, colliding segments is the one dropped');
+end;
+
+procedure TSegmentLabelTests.SegmentLabels_CategoryAndPercentage_ShowsBoth;
+begin
+  RenderThirds(TSegmentLabelMode.CategoryAndPercentage);
+
+  Assert.AreEqual(1, CountOfText('A (33%)'));
+  Assert.AreEqual(1, CountOfText('B (33%)'));
+  Assert.AreEqual(1, CountOfText('C (33%)'));
+end;
+
+procedure TSegmentLabelTests.SegmentLabels_Percentage_ShowsTheShareAlone;
+begin
+  { For a chart whose legend already names the categories, which is where the name in
+    every label only repeats it. }
+  RenderThirds(TSegmentLabelMode.Percentage);
+
+  Assert.AreEqual(3, CountOfText('33%'), 'Every segment must be labelled with its share');
+  Assert.AreEqual(0, CountOfText('A (33%)'), 'The category must not appear in a share-only label');
+  Assert.AreEqual(0, CountOfText('A'), 'The category must not appear in a share-only label');
+end;
+
+procedure TSegmentLabelTests.SegmentLabels_Category_ShowsTheCategoryAlone;
+begin
+  RenderThirds(TSegmentLabelMode.Category);
+
+  Assert.AreEqual(1, CountOfText('A'));
+  Assert.AreEqual(1, CountOfText('B'));
+  Assert.AreEqual(1, CountOfText('C'));
+  Assert.AreEqual(0, CountOfText('33%'), 'The share must not appear in a category-only label');
+end;
+
+procedure TSegmentLabelTests.SegmentLabels_None_DrawsNoLabelsButKeepsTheHitTargets;
+begin
+  const HitMap = RenderThirds(TSegmentLabelMode.None);
+
+  Assert.AreEqual(0, FRecordingCanvas.CountOfKind(TCanvasCallKind.DrawText),
+    'Without a legend, title or labels, the pie draws no text at all');
+  Assert.AreEqual(0, FRecordingCanvas.CountOfKind(TCanvasCallKind.FillRect),
+    'No label means no label background box either');
+  Assert.AreEqual(3, Length(HitMap), 'Hover must still find every segment when it carries no label');
 end;
 
 end.
