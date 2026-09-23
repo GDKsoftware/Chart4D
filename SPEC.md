@@ -996,7 +996,7 @@ skip this candidate entirely (it is not drawn, and not shifted further); otherwi
 and add its clamped rectangle to the "already drawn" list for the rest of the pass. This is
 a first-come-first-served rule over a fixed order, so it needs no randomization or
 iteration and always yields the same result for the same input; it is also exactly the rule
-`Pie`/`Donut` reuse for segment labels (4.23), in category order. It only considers other
+`Pie`/`Donut` reuse for segment labels (4.23), over the segments largest first. It only considers other
 value labels drawn in the same pass, not pre-existing manual annotations, which are drawn
 afterward and are the caller's own responsibility to place.
 
@@ -1400,8 +1400,14 @@ mid-angle (`StartAngle + SweepAngle / 2`) and `0.65 * OuterRadius` from center, 
 `Format('%s (%s)', [Categories[i], TAxisScale.FormatPercentage(Values[i] / Total, YAxis)])`,
 which is a whole percent unless `YAxis.Decimals` asks for decimals (4.27), with the same
 white background box as a value label (4.12), and the exact same deterministic
-overlap-avoidance rule from 4.12 (fixed order = category order; skip a candidate whose
-clamped box intersects an already-drawn one). Labels are drawn in a second pass, after
+overlap-avoidance rule from 4.12 (skip a candidate whose clamped box intersects an
+already-drawn one), with its fixed order being the segments by value, largest first, and
+equal values in category order. The largest segments are the ones a reader looks for, so
+when two labels collide it is the smaller segment's that goes; a tiny segment early in the
+category list no longer pushes out the label of a much larger one after it. The tie-break
+makes the order total, so the same data always keeps the same labels. The order decides
+only which labels survive; every label still sits on its own wedge's mid-angle, and the
+wedges, legend and hit targets stay in category order. Labels are drawn in a second pass, after
 every wedge: a label drawn right after its own wedge would be painted over by the next
 one, and would still hold its place against the labels after it, so a visible label could
 be dropped for colliding with one nobody can see.
@@ -1800,7 +1806,10 @@ read from the `BDS` environment variable, defaulting to
 
 - `Chart4D.SegmentLabels.Tests.pas`: the `Pie`/`Donut` segment labels of 4.23, against a
   `TRecordingCanvas`. In the recorded call order every segment label of a pie and of a
-  donut comes after the last wedge, so no wedge can be drawn over a label.
+  donut comes after the last wedge, so no wedge can be drawn over a label. On a pie whose
+  1% and 8% segments sit side by side ahead of a 91% one, the 8% label is kept and the
+  colliding 1% label is the one dropped; of two equal, colliding segments the earlier
+  category keeps its label.
 
 - `Chart4D.Catalog.Tests.pas`: for the shared demo catalogue
   (`Examples\Common\Chart4DDemo.Catalog.pas`, 7), the numbers and names parsed back out of

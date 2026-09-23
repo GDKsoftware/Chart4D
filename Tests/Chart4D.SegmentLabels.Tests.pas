@@ -49,6 +49,12 @@ type
 
     [Test]
     procedure DonutChart_EveryLabel_IsDrawnAfterTheLastWedge;
+
+    [Test]
+    procedure PieChart_SmallSegmentBeforeALargerOne_NeverDisplacesTheLargerLabel;
+
+    [Test]
+    procedure PieChart_EqualSegmentsThatCollide_KeepTheEarlierCategory;
   end;
 
 implementation
@@ -141,6 +147,30 @@ begin
   RenderPie(TChartKind.Donut, ['Lopen', 'Fiets', 'Bus', 'Trein', 'Auto'], [18, 27, 0.2, 9, 45.8]);
 
   AssertEveryLabelDrawnAfterTheLastWedge;
+end;
+
+procedure TSegmentLabelTests.PieChart_SmallSegmentBeforeALargerOne_NeverDisplacesTheLargerLabel;
+begin
+  { A 1% and an 8% segment side by side at the top of the pie put their labels on top of
+    each other, so one has to go. Offered in category order the 1% label came first and
+    pushed out the 8% one; the larger segment is the one worth naming. }
+  RenderPie(TChartKind.Pie, ['A', 'B', 'C'], [1, 8, 91]);
+
+  Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('B (8%)'), 'The 8% segment must keep its label');
+  Assert.IsFalse(FRecordingCanvas.HasTextEqualTo('A (1%)'),
+    'The 1% label collides with the 8% one, so it is the one to drop');
+  Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('C (91%)'), 'The largest segment is always labelled');
+end;
+
+procedure TSegmentLabelTests.PieChart_EqualSegmentsThatCollide_KeepTheEarlierCategory;
+begin
+  { Two equal segments have no size to choose between them, so category order decides and
+    the same data always keeps the same label. }
+  RenderPie(TChartKind.Pie, ['A', 'B', 'C'], [4, 4, 92]);
+
+  Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('A (4%)'), 'The earlier of two equal segments keeps its label');
+  Assert.IsFalse(FRecordingCanvas.HasTextEqualTo('B (4%)'),
+    'The later of two equal, colliding segments is the one dropped');
 end;
 
 end.

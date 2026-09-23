@@ -62,6 +62,8 @@ type
 implementation
 
 uses
+  System.Generics.Collections,
+  System.Generics.Defaults,
   System.Math,
   System.SysUtils,
   System.TypInfo,
@@ -724,6 +726,7 @@ type
     function ArcPoints(const Center: TPointF; const Radius, StartAngle, SweepAngle: Single;
                        const SegmentCount: Integer): TArray<TPointF>;
     function BuildWedges(const Values: TArray<Double>; const Total: Double): TArray<TPieWedge>;
+    function LabelOrder(const Wedges: TArray<TPieWedge>): TArray<TPieWedge>;
     procedure DrawWedge(const Wedge: TPieWedge; const Frame: TPieFrame);
     procedure DrawWedgeLabel(const Wedge: TPieWedge; const Frame: TPieFrame);
     function SegmentLabelPoint(const Wedge: TPieWedge; const Frame: TPieFrame): TPointF;
@@ -2500,7 +2503,7 @@ begin
   for var Wedge in Wedges do
     DrawWedge(Wedge, Frame);
 
-  for var Wedge in Wedges do
+  for var Wedge in LabelOrder(Wedges) do
     DrawWedgeLabel(Wedge, Frame);
 
   if Frame.IsDonut then
@@ -2572,6 +2575,24 @@ begin
     const Angle = DegToRad(StartAngle + SweepAngle * Index / SegmentCount);
     Result[Index] := TPointF.Create(Center.X + Radius * Cos(Angle), Center.Y + Radius * Sin(Angle));
   end;
+end;
+
+/// <summary>
+/// The wedges in the order their labels are offered to the placer: the largest value
+/// first, so when two labels collide it is the smaller segment's that goes. Equal values
+/// keep category order, which the comparison spells out because <c>TArray.Sort</c> is not
+/// stable, so the same data always keeps the same labels.
+/// </summary>
+function TCircularSeriesRenderer.LabelOrder(const Wedges: TArray<TPieWedge>): TArray<TPieWedge>;
+begin
+  Result := Copy(Wedges);
+  TArray.Sort<TPieWedge>(Result, TComparer<TPieWedge>.Construct(
+    function(const Left, Right: TPieWedge): Integer
+    begin
+      Result := CompareValue(Right.Value, Left.Value);
+      if Result = 0 then
+        Result := CompareValue(Left.CategoryIndex, Right.CategoryIndex);
+    end));
 end;
 
 procedure TCircularSeriesRenderer.DrawWedge(const Wedge: TPieWedge; const Frame: TPieFrame);
