@@ -19,6 +19,7 @@ interface
 
 uses
   DUnitX.TestFramework,
+  Chart4D.Tests.Asserts,
   Chart4D.Style;
 
 type
@@ -78,6 +79,9 @@ type
 
     [Test]
     procedure Default_MinimumTextContrast_IsTheWcagMinimumForNormalText;
+
+    [Test]
+    procedure Default_Palette_IsEmpty;
   end;
 
   [TestFixture]
@@ -226,6 +230,11 @@ end;
 procedure TChartStyleDefaultTests.Default_MinimumTextContrast_IsTheWcagMinimumForNormalText;
 begin
   Assert.AreEqual(4.5, FStyle.MinimumTextContrast, 0.0001);
+end;
+
+procedure TChartStyleDefaultTests.Default_Palette_IsEmpty;
+begin
+  Assert.AreEqual(0, Length(FStyle.Palette), 'An empty palette means DefaultPalette');
 end;
 
 procedure TChartColorsTests.Blend_OpaqueOver_ReturnsOver;

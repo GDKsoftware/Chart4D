@@ -97,6 +97,9 @@ type
 
     [Test]
     procedure MinimumTextContrast_One_KeepsTheStyleTextColorOnEveryWedge;
+
+    [Test]
+    procedure TextContrast_CustomPalette_IsJudgedAgainstThePaletteColor;
   end;
 
 implementation
@@ -409,6 +412,24 @@ begin
     Assert.AreEqual<TAlphaColor>(ChartTextDark, SegmentLabelCall(Text).TextStyle.Color,
       Format('A minimum of 1 keeps one text color throughout, so "%s" must stay dark', [Text]));
   end;
+end;
+
+procedure TSegmentLabelTests.TextContrast_CustomPalette_IsJudgedAgainstThePaletteColor;
+begin
+  { Chosen so every label comes out the other way from the default palette, where the blue
+    and dark red labels turn white and the orange one stays dark: a pale yellow, a navy and a
+    pale cyan give dark, white and dark instead. }
+  var Style := BoxlessStyleWithMinimumContrast(4.5);
+  Style.Palette := [TAlphaColor($FFFFF59D), TAlphaColor($FF1A237E), TAlphaColor($FFE0F7FA)];
+
+  RenderThirdsWithStyle(TSegmentLabelMode.CategoryAndPercentage, Style);
+
+  Assert.AreEqual<TAlphaColor>(ChartTextDark, SegmentLabelCall('A (33%)').TextStyle.Color,
+    'Text on the pale yellow wedge must stay dark');
+  Assert.AreEqual<TAlphaColor>(TAlphaColors.White, SegmentLabelCall('B (33%)').TextStyle.Color,
+    'Text on the navy wedge must turn white');
+  Assert.AreEqual<TAlphaColor>(ChartTextDark, SegmentLabelCall('C (33%)').TextStyle.Color,
+    'Text on the pale cyan wedge must stay dark');
 end;
 
 end.

@@ -18,6 +18,7 @@ unit Chart4D.Plot.Tests;
 interface
 
 uses
+  System.UITypes,
   DUnitX.TestFramework,
   Chart4D.Plot,
   Chart4D.Tests.Asserts;
@@ -27,6 +28,8 @@ type
   TChartPlotSeriesColorTests = class
   private
     FPlot: TChartPlot;
+
+    procedure SetPalette(const Colors: TArray<TAlphaColor>);
 
   public
     [Setup]
@@ -67,6 +70,30 @@ type
 
     [Test]
     procedure CategoryColor_NegativeIndex_RaisesGuardException;
+
+    [Test]
+    procedure CategoryColor_EmptyPalette_MatchesDefaultPaletteOverTwoCycles;
+
+    [Test]
+    procedure CategoryColor_CustomPalette_UsesItsColorsInOrder;
+
+    [Test]
+    procedure CategoryColor_CustomPalette_WrapsPastItsOwnLength;
+
+    [Test]
+    procedure SeriesColor_CustomPalette_ColorsASeriesWithoutItsOwnColor;
+
+    [Test]
+    procedure SeriesColor_CustomPalette_LeavesASeriesOwnColorAlone;
+
+    [Test]
+    procedure SeriesColor_CustomPaletteAndHighlight_StillMutesTheOtherSeries;
+
+    [Test]
+    procedure Style_PaletteElementChangedThroughACopy_LeavesThePlotColorsAlone;
+
+    [Test]
+    procedure Style_PaletteArrayChangedAfterAssigning_LeavesThePlotColorsAlone;
   end;
 
   [TestFixture]
@@ -198,7 +225,6 @@ implementation
 
 uses
   System.SysUtils,
-  System.UITypes,
   Chart4D.Style,
   Chart4D.Types;
 
@@ -311,6 +337,107 @@ procedure TChartPlotSeriesColorTests.CategoryColor_IndexBeyondPaletteLength_Wrap
 begin
   Assert.AreEqual<TAlphaColor>(DefaultPalette[0], FPlot.CategoryColor(6));
   Assert.AreEqual<TAlphaColor>(DefaultPalette[1], FPlot.CategoryColor(7));
+end;
+
+const
+  { Three colors no default palette entry shares, so a match can only come from the palette
+    under test. }
+  PaletteRed = TAlphaColor($FFC0392B);
+  PaletteTeal = TAlphaColor($FF16A085);
+  PalettePurple = TAlphaColor($FF8E44AD);
+
+procedure TChartPlotSeriesColorTests.SetPalette(const Colors: TArray<TAlphaColor>);
+begin
+  var Style := FPlot.Style;
+  Style.Palette := Colors;
+  FPlot.Style := Style;
+end;
+
+procedure TChartPlotSeriesColorTests.CategoryColor_EmptyPalette_MatchesDefaultPaletteOverTwoCycles;
+begin
+  Assert.AreEqual(0, Length(FPlot.Style.Palette), 'A new plot must start with an empty palette');
+
+  for var Index := 0 to 2 * Length(DefaultPalette) - 1 do
+  begin
+    Assert.AreEqual<TAlphaColor>(DefaultPalette[Index mod Length(DefaultPalette)], FPlot.CategoryColor(Index),
+      Format('An empty palette must give category %d its DefaultPalette color', [Index]));
+  end;
+end;
+
+procedure TChartPlotSeriesColorTests.CategoryColor_CustomPalette_UsesItsColorsInOrder;
+begin
+  SetPalette([PaletteRed, PaletteTeal, PalettePurple]);
+
+  Assert.AreEqual<TAlphaColor>(PaletteRed, FPlot.CategoryColor(0));
+  Assert.AreEqual<TAlphaColor>(PaletteTeal, FPlot.CategoryColor(1));
+  Assert.AreEqual<TAlphaColor>(PalettePurple, FPlot.CategoryColor(2));
+end;
+
+procedure TChartPlotSeriesColorTests.CategoryColor_CustomPalette_WrapsPastItsOwnLength;
+begin
+  { Wrapping is by the custom palette's length, three here, not by DefaultPalette's six. }
+  SetPalette([PaletteRed, PaletteTeal, PalettePurple]);
+
+  Assert.AreEqual<TAlphaColor>(PaletteRed, FPlot.CategoryColor(3));
+  Assert.AreEqual<TAlphaColor>(PaletteTeal, FPlot.CategoryColor(7));
+  Assert.AreEqual<TAlphaColor>(PalettePurple, FPlot.CategoryColor(11));
+end;
+
+procedure TChartPlotSeriesColorTests.SeriesColor_CustomPalette_ColorsASeriesWithoutItsOwnColor;
+begin
+  SetPalette([PaletteRed, PaletteTeal]);
+  FPlot.AddSeries('First');
+  FPlot.AddSeries('Second');
+  FPlot.AddSeries('Third');
+
+  Assert.AreEqual<TAlphaColor>(PaletteRed, FPlot.SeriesColor(0));
+  Assert.AreEqual<TAlphaColor>(PaletteTeal, FPlot.SeriesColor(1));
+  Assert.AreEqual<TAlphaColor>(PaletteRed, FPlot.SeriesColor(2), 'The third series wraps to the first color');
+end;
+
+procedure TChartPlotSeriesColorTests.SeriesColor_CustomPalette_LeavesASeriesOwnColorAlone;
+begin
+  SetPalette([PaletteRed, PaletteTeal]);
+  const CustomSeries = FPlot.AddSeries('Custom');
+  CustomSeries.Color := TAlphaColor($FF123456);
+
+  Assert.AreEqual<TAlphaColor>(TAlphaColor($FF123456), FPlot.SeriesColor(0),
+    'A series'' own color still wins over the palette');
+end;
+
+procedure TChartPlotSeriesColorTests.SeriesColor_CustomPaletteAndHighlight_StillMutesTheOtherSeries;
+begin
+  SetPalette([PaletteRed, PaletteTeal]);
+  FPlot.AddSeries('First');
+  FPlot.AddSeries('Second');
+  FPlot.HighlightedSeriesIndex := 1;
+
+  Assert.AreEqual<TAlphaColor>(ChartLightGrey, FPlot.SeriesColor(0), 'The series not highlighted is muted');
+  Assert.AreEqual<TAlphaColor>(PaletteTeal, FPlot.SeriesColor(1), 'The highlighted series keeps its palette color');
+end;
+
+procedure TChartPlotSeriesColorTests.Style_PaletteElementChangedThroughACopy_LeavesThePlotColorsAlone;
+begin
+  { A dynamic array in a record is shared by reference, so without the plot copying its
+    palette this write would recolor the chart without OnChanged ever firing. }
+  SetPalette([PaletteRed, PaletteTeal]);
+
+  var StyleCopy := FPlot.Style;
+  StyleCopy.Palette[0] := PalettePurple;
+
+  Assert.AreEqual<TAlphaColor>(PaletteRed, FPlot.CategoryColor(0),
+    'Only assigning the style back may change the plot''s colors');
+end;
+
+procedure TChartPlotSeriesColorTests.Style_PaletteArrayChangedAfterAssigning_LeavesThePlotColorsAlone;
+begin
+  var Colors: TArray<TAlphaColor> := [PaletteRed, PaletteTeal];
+  SetPalette(Colors);
+
+  Colors[0] := PalettePurple;
+
+  Assert.AreEqual<TAlphaColor>(PaletteRed, FPlot.CategoryColor(0),
+    'The plot keeps its own copy of the array it was given');
 end;
 
 procedure TChartPlotSeriesColorTests.CategoryColor_NegativeIndex_RaisesGuardException;

@@ -167,6 +167,12 @@ type
     procedure Render_TextAnnotation_UsesTheStyleLabelBackgroundColor;
 
     [Test]
+    procedure Render_PieChartWithCustomPalette_ColorsWedgesLegendAndHoverFromIt;
+
+    [Test]
+    procedure Render_GroupedBarWithCustomPalette_ColorsEachSeriesFromIt;
+
+    [Test]
     procedure Render_DonutChartTextAnnotation_DrawsAtCategoryIndexAndPlotHeightFraction;
 
     [Test]
@@ -1300,6 +1306,68 @@ begin
     end;
 
     Assert.IsTrue(FoundAtCenter, 'DonutCenterText must be drawn at the computed center');
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_PieChartWithCustomPalette_ColorsWedgesLegendAndHoverFromIt;
+begin
+  { Everything that follows a category's color follows the palette with it: the wedge,
+    its legend swatch and the color its hover target reports. }
+  const Palette: TArray<TAlphaColor> = [TAlphaColor($FFC0392B), TAlphaColor($FF16A085), TAlphaColor($FF8E44AD)];
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Pie;
+    Plot.Categories := ['A', 'B', 'C'];
+    Plot.AddSeries('Share', [10, 20, 30]);
+
+    var Style := Plot.Style;
+    Style.Palette := Palette;
+    Plot.Style := Style;
+
+    var HitMap: TArray<TChartHitTarget>;
+    TChartRenderer.Render(Plot, FCanvas, 640, 450, HitMap);
+
+    const Wedges = FRecordingCanvas.CallsOfKind(TCanvasCallKind.FillPolygon);
+    Assert.AreEqual(3, Length(Wedges) + 0);
+    for var Index := 0 to High(Palette) do
+    begin
+      Assert.AreEqual<TAlphaColor>(Palette[Index], Wedges[Index].Color,
+        Format('Wedge %d must take palette color %d', [Index, Index]));
+      Assert.AreEqual(1, FRecordingCanvas.CountOfColor(TCanvasCallKind.FillRect, Palette[Index]),
+        Format('The legend swatch of category %d must take palette color %d', [Index, Index]));
+      Assert.AreEqual<TAlphaColor>(Palette[Index], HitMap[Index].Info.Color,
+        Format('Hovering category %d must report palette color %d', [Index, Index]));
+    end;
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_GroupedBarWithCustomPalette_ColorsEachSeriesFromIt;
+begin
+  const Palette: TArray<TAlphaColor> = [TAlphaColor($FFC0392B), TAlphaColor($FF16A085)];
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.GroupedBar;
+    Plot.LegendPosition := TLegendPosition.None;
+    Plot.Categories := ['A', 'B'];
+    Plot.AddSeries('First', [10, 20]);
+    Plot.AddSeries('Second', [15, 25]);
+
+    var Style := Plot.Style;
+    Style.Palette := Palette;
+    Plot.Style := Style;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    Assert.AreEqual(2, FRecordingCanvas.CountOfColor(TCanvasCallKind.FillRect, Palette[0]),
+      'Both bars of the first series take the first palette color');
+    Assert.AreEqual(2, FRecordingCanvas.CountOfColor(TCanvasCallKind.FillRect, Palette[1]),
+      'Both bars of the second series take the second palette color');
+    Assert.AreEqual(0, FRecordingCanvas.CountOfColor(TCanvasCallKind.FillRect, DefaultPalette[0]),
+      'No bar may keep a DefaultPalette color');
   finally
     Plot.Free;
   end;

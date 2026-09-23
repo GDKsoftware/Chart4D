@@ -147,6 +147,17 @@ Plot.HighlightedSeriesIndex := 4;
 
 A series with an explicitly set colour keeps it, so a deliberate choice always survives.
 
+Series and categories without a colour of their own cycle through six editorial colours. A
+pie of eleven transport modes would repeat five of them, so give the style a longer palette:
+
+```pascal
+var Style := Plot.Style;
+Style.Palette := [ChartBlue, ChartOrange, ChartDarkRed, ChartGreen, ...];  // empty = the six defaults
+Plot.Style := Style;
+```
+
+The legend, the hover highlight and the segment label contrast all follow it.
+
 ## Axes
 
 ```pascal

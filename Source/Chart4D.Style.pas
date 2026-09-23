@@ -145,6 +145,13 @@ type
     /// large text; <c>MaximumContrastRatio</c> always takes the more legible of the two.
     /// </summary>
     MinimumTextContrast: Double;
+    /// <summary>
+    /// The colors <c>TChartPlot.SeriesColor</c> and <c>TChartPlot.CategoryColor</c> cycle
+    /// through, the first one again after the last. Empty, the default and what a zeroed
+    /// record holds, means <c>DefaultPalette</c>. A plot keeps its own copy, so change it by
+    /// assigning a whole new array and the style back to the plot.
+    /// </summary>
+    Palette: TArray<TAlphaColor>;
 
     /// <summary>
     /// Returns the default editorial style described in the specification.
@@ -220,6 +227,7 @@ begin
   Result.DonutInnerRadiusFactor := 0.6;
   Result.LabelBackgroundColor := ChartLabelBackground;
   Result.MinimumTextContrast := 4.5;
+  Result.Palette := [];
 end;
 
 class function TChartColors.Blend(const Over, Under: TAlphaColor): TAlphaColor;

@@ -62,6 +62,8 @@ type
     procedure SetLogoFilePath(const Value: string);
     procedure SetCategories(const Value: TArray<string>);
     procedure SetStyle(const Value: TChartStyle);
+    function GetStyle: TChartStyle;
+    function PaletteColor(const Index: Integer): TAlphaColor;
     procedure SetXAxis(const Value: TAxisOptions);
     procedure SetYAxis(const Value: TAxisOptions);
     procedure SetOrientation(const Value: TChartOrientation);
@@ -161,7 +163,8 @@ type
 
     /// <summary>
     /// Returns the color of the series at <c>Index</c>: its own <c>Color</c> when
-    /// non-zero, otherwise <c>DefaultPalette[Index mod Length(DefaultPalette)]</c>. When
+    /// non-zero, otherwise color <c>Index</c> of the palette (<c>Style.Palette</c>, or
+    /// <c>DefaultPalette</c> when that is empty), wrapping past its end. When
     /// <c>HighlightedSeriesIndex</c> is a valid series index other than <c>Index</c>,
     /// returns <c>ChartLightGrey</c> instead, muting every series but the highlighted one.
     /// </summary>
@@ -169,10 +172,10 @@ type
     function SeriesColor(const Index: Integer): TAlphaColor;
 
     /// <summary>
-    /// Returns the color for category <c>Index</c>: always
-    /// <c>DefaultPalette[Index mod Length(DefaultPalette)]</c>. Categories have no
-    /// per-category color override. Used by <c>Pie</c>/<c>Donut</c> charts, which color
-    /// by category rather than by series.
+    /// Returns the color for category <c>Index</c>: color <c>Index</c> of the palette
+    /// (<c>Style.Palette</c>, or <c>DefaultPalette</c> when that is empty), wrapping past
+    /// its end. Categories have no per-category color override. Used by <c>Pie</c>/
+    /// <c>Donut</c> charts, which color by category rather than by series.
     /// </summary>
     /// <exception cref="EChart4DException">Raised when <c>Index</c> is negative.</exception>
     function CategoryColor(const Index: Integer): TAlphaColor;
@@ -191,8 +194,12 @@ type
     property Categories: TArray<string> read FCategories write SetCategories;
     /// <summary>The owned list of data series.</summary>
     property Series: TObjectList<TChartSeries> read FSeries;
-    /// <summary>The visual style applied when rendering.</summary>
-    property Style: TChartStyle read FStyle write SetStyle;
+    /// <summary>
+    /// The visual style applied when rendering. Reading returns a copy whose
+    /// <c>Palette</c> is a copy too, and writing stores a copy, so the plot owns its
+    /// palette and a caller changes it only by assigning the style back.
+    /// </summary>
+    property Style: TChartStyle read GetStyle write SetStyle;
     /// <summary>The X axis (category axis for Line/Area charts) options.</summary>
     property XAxis: TAxisOptions read FXAxis write SetXAxis;
     /// <summary>The Y axis (value axis) options.</summary>
@@ -513,7 +520,7 @@ begin
   if HasCustomColor then
     Result := CurrentSeries.Color
   else
-    Result := DefaultPalette[Index mod Length(DefaultPalette)];
+    Result := PaletteColor(Index);
 
   const HasValidHighlight = (FHighlightedSeriesIndex >= 0) and (FHighlightedSeriesIndex < FSeries.Count);
   const IsMuted = HasValidHighlight and (Index <> FHighlightedSeriesIndex);
@@ -527,7 +534,7 @@ begin
   if IsNegative then
     raise EChart4DException.CreateFmt(SCategoryColorIndexNegative, [Index]);
 
-  Result := DefaultPalette[Index mod Length(DefaultPalette)];
+  Result := PaletteColor(Index);
 end;
 
 procedure TChartPlot.SetKind(const Value: TChartKind);
@@ -568,8 +575,27 @@ end;
 
 procedure TChartPlot.SetStyle(const Value: TChartStyle);
 begin
+  { A dynamic array in a record is shared by reference, so without these copies a caller
+    could change the plot's colors in place, through any copy of the style, without
+    OnChanged ever firing and so without the chart repainting. }
   FStyle := Value;
+  FStyle.Palette := Copy(Value.Palette);
   NotifyChanged;
+end;
+
+function TChartPlot.GetStyle: TChartStyle;
+begin
+  Result := FStyle;
+  Result.Palette := Copy(FStyle.Palette);
+end;
+
+function TChartPlot.PaletteColor(const Index: Integer): TAlphaColor;
+begin
+  const HasOwnPalette = (Length(FStyle.Palette) > 0);
+  if HasOwnPalette then
+    Result := FStyle.Palette[Index mod Length(FStyle.Palette)]
+  else
+    Result := DefaultPalette[Index mod Length(DefaultPalette)];
 end;
 
 procedure TChartPlot.SetXAxis(const Value: TAxisOptions);

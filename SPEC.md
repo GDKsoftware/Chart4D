@@ -265,6 +265,7 @@ type
     DonutInnerRadiusFactor: Single;  // 0.6, see 4.24
     LabelBackgroundColor: TAlphaColor; // ChartLabelBackground, see 4.29
     MinimumTextContrast: Double;       // 4.5, see 4.29
+    Palette: TArray<TAlphaColor>;      // [] = DefaultPalette, see 4.30
     class function Default: TChartStyle; static;
   end;
 
@@ -526,12 +527,13 @@ type
 Behavior:
 
 - `SeriesColor(Index)`: when `HighlightedSeriesIndex` is `-1` (default) or out of range,
-  the series' own `Color` when non-zero, otherwise
-  `DefaultPalette[Index mod Length(DefaultPalette)]`. When `HighlightedSeriesIndex` is a
+  the series' own `Color` when non-zero, otherwise palette color `Index`: the plot's
+  `Style.Palette` when it is non-empty, `DefaultPalette` when it is empty, wrapping past its
+  length (4.30). When `HighlightedSeriesIndex` is a
   valid series index, `SeriesColor(HighlightedSeriesIndex)` still resolves as above, and
   `SeriesColor` of every other index returns `ChartLightGrey` instead; see 4.13.
-- `CategoryColor(Index)`: `DefaultPalette[Index mod Length(DefaultPalette)]`, always;
-  categories have no per-category color override. Used by `Pie`/`Donut` (4.23, 4.24),
+- `CategoryColor(Index)`: palette color `Index`, exactly as for a series without its own
+  color (4.30); categories have no per-category color override. Used by `Pie`/`Donut` (4.23, 4.24),
   which color by category rather than by series.
 - `AddDumbbellSeries` sets `Kind := Dumbbell` and `Orientation := Horizontal` and fills
   `Values`/`EndValues` of a single series. `AddRangeSeries` and `AddArrowSeries` do the
@@ -1806,6 +1808,39 @@ backgrounds where white would have read slightly better: pure black text on grey
 `#767676` on black. `MaximumContrastRatio` restores the plain "more legible" rule for any
 text color.
 
+### 4.30 Palette
+
+`TChartStyle` carries `Palette: TArray<TAlphaColor>` (4.3), default empty. Palette color
+`Index` is `Palette[Index mod Length(Palette)]` when `Palette` is non-empty and
+`DefaultPalette[Index mod Length(DefaultPalette)]` when it is empty, so a chart keeps the
+six editorial colors until a caller supplies more. `TChartPlot.SeriesColor` uses it for a
+series without its own `Color`, and `TChartPlot.CategoryColor` for every category (4.7);
+`HighlightedSeriesIndex` still mutes every other series to `ChartLightGrey` (4.13).
+`DefaultPalette` itself is unchanged: picking more or different colors is the caller's
+choice, and the six stay the editorial default.
+
+Everything that takes its color from those two functions follows the palette with them:
+bars, lines, points and wedges, the legend swatches, the color a hover target reports
+(4.11), and the wedge color a segment label's text contrast is judged against (4.29).
+
+A caller sets it through the property copy, like every style field:
+
+```pascal
+var Style := Plot.Style;
+Style.Palette := [ChartBlue, ChartOrange, ChartDarkRed, ChartGreen, ...];
+Plot.Style := Style;
+```
+
+The plot keeps its own copy of the array: `TChartPlot.Style` stores a copy of `Palette` when
+it is written and returns a copy when it is read. A dynamic array in a record is shared by
+reference, so without those copies a write to an element of any copy of the style, or to
+the array a caller passed in, would recolor the chart in place without `OnChanged`, and so
+without the chart repainting. Assigning the style back is the only way to change the
+colors.
+
+Empty is also what a zeroed `TChartStyle` holds, so a style built without `Default` still
+gets `DefaultPalette`.
+
 ## 5. Tests (Tests\, DUnitX)
 
 Console project `Chart4D.Tests.dpr` + `build.bat` (dcc32; the RAD Studio location is
@@ -1829,9 +1864,11 @@ read from the `BDS` environment variable, defaulting to
   fixed decimal count labels every break with it, and `YAxis.Decimals` reaches the
   proportions axis and the pie segment percentages while the default leaves both at whole
   percents (4.27); a `TextLabel` annotation's box takes the style's `LabelBackgroundColor`
-  (4.29).
+  (4.29); a custom `Palette` colors a pie's wedges, their legend swatches and the colors their
+  hover targets report, and every bar of each series of a grouped bar, with no
+  `DefaultPalette` color left (4.30).
 - `Chart4D.Style.Tests.pas`: `TChartStyle.Default` values per section 3, `LabelBackgroundColor`
-  among them; and `TChartColors` (4.3): an opaque color blends to itself and a transparent
+  and an empty `Palette` among them; and `TChartColors` (4.3): an opaque color blends to itself and a transparent
   one to what is under it, half-transparent white over black is mid grey, black against
   white contrasts 21 to 1 either way round, and `ReadableTextColor` gives white on dark red
   and keeps the dark text on orange; with a minimum text contrast, 1 never switches on any
@@ -1889,7 +1926,11 @@ read from the `BDS` environment variable, defaulting to
   `AddArrowSeries` set `Kind`/`Orientation`/`Values`/`EndValues` like `AddDumbbellSeries`;
   `AddRangeBandSeries` appends (does not clear) and sets `IsRangeBand`; `CategoryColor`
   cycles the palette by category index (4.7); `SegmentLabels` defaults to
-  `CategoryAndPercentage` and setting it fires `OnChanged` (4.29).
+  `CategoryAndPercentage` and setting it fires `OnChanged` (4.29); and for `Palette` (4.30),
+  an empty one gives `DefaultPalette` over two full cycles, a custom one colors categories in
+  its own order and wraps by its own length, colors a series without its own color while a
+  series' own color still wins and the highlight still mutes the others, and neither a write
+  to an element of a style copy nor to the array the plot was given changes the plot's colors.
 - `Chart4D.Renderer.Tests.pas` also covers, each against a `TRecordingCanvas`: a logarithmic
   axis renders breaks at powers of the base and raises `EChart4DException` for a
   non-positive value (4.15); a date axis with `DateMode = Auto` picks the expected
@@ -1945,7 +1986,9 @@ read from the `BDS` environment variable, defaulting to
   no box at all, turns it white on the blue and dark red wedges and keeps it dark on the
   orange one, and still drops the colliding 1% label. With no box, a `MinimumTextContrast` of
   3 keeps the dark text on the blue wedge and turns only the dark red one white, and 1 keeps
-  the dark text on every wedge.
+  the dark text on every wedge. With a custom `Palette` of pale yellow, navy and pale cyan
+  the contrast is judged against those wedges, dark, white and dark, the other way round from
+  the default palette (4.30).
 
 - `Chart4D.Catalog.Tests.pas`: for the shared demo catalogue
   (`Examples\Common\Chart4DDemo.Catalog.pas`, 7), the numbers and names parsed back out of
