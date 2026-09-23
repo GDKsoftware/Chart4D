@@ -209,8 +209,9 @@ Netherlands  France     Italy
 ```
 
 A label that fits neither row is still dropped. The second row costs a line of plot
-height (a column of width, on a horizontal chart), reserved whenever you ask for the
-layout, so the plot does not jump about as the data or the window changes.
+height, reserved whenever you ask for the layout, so the plot does not jump about as the
+data or the window changes. Staggering applies to the bottom axis of a vertical chart; a
+horizontal chart already gives each label its own line down the left edge, and ignores it.
 
 For a horizontal chart the value axis is still `YAxis`. The orientation swaps where the axes
 are drawn, not what they mean.

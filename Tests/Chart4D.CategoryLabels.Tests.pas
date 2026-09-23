@@ -36,6 +36,8 @@ type
     function IsOneOf(const Text: string; const Candidates: TArray<string>): Boolean;
     function LowestBarBottomFor(const Categories: TArray<string>;
                                 const Layout: TCategoryLabelLayout): Single;
+    procedure RenderHorizontal(const Categories: TArray<string>; const Layout: TCategoryLabelLayout;
+                               const Canvas: IChartCanvas);
     function LabelCallsFor(const Categories: TArray<string>): TArray<TCanvasCall>;
     function DistinctRowOffsets(const Calls: TArray<TCanvasCall>; const IsHorizontal: Boolean): TArray<Single>;
     function RowCountOf(const Calls: TArray<TCanvasCall>; const IsHorizontal: Boolean): Integer;
@@ -89,7 +91,7 @@ type
     procedure StaggeredLayout_ReservesTheSecondRowByShorteningThePlotArea;
 
     [Test]
-    procedure StaggeredLayout_HorizontalChart_DrawsEveryLabelAcrossTwoColumns;
+    procedure StaggeredLayout_HorizontalChart_IsIgnored;
 
     [Test]
     procedure StaggeredLayout_ContinuousXAxis_KeepsEveryBreakOnOneRow;
@@ -165,6 +167,27 @@ end;
 /// bottom edge of its first bar, which sits on the value axis' zero baseline and so
 /// tracks the bottom of the plot area.
 /// </summary>
+procedure TCategoryLabelLayoutTests.RenderHorizontal(const Categories: TArray<string>;
+                                                     const Layout: TCategoryLabelLayout;
+                                                     const Canvas: IChartCanvas);
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Bar;
+    Plot.Orientation := TChartOrientation.Horizontal;
+    Plot.Categories := Categories;
+    Plot.AddSeries('Only', ValuesFor(Categories));
+
+    var AxisOptions := Plot.XAxis;
+    AxisOptions.CategoryLabelLayout := Layout;
+    Plot.XAxis := AxisOptions;
+
+    TChartRenderer.Render(Plot, Canvas, ChartWidth, ChartHeight);
+  finally
+    Plot.Free;
+  end;
+end;
+
 function TCategoryLabelLayoutTests.LowestBarBottomFor(const Categories: TArray<string>;
                                                       const Layout: TCategoryLabelLayout): Single;
 begin
@@ -580,36 +603,34 @@ begin
     'The extra row is paid for out of the plot area, not drawn over the footer');
 end;
 
-procedure TCategoryLabelLayoutTests.StaggeredLayout_HorizontalChart_DrawsEveryLabelAcrossTwoColumns;
+procedure TCategoryLabelLayoutTests.StaggeredLayout_HorizontalChart_IsIgnored;
 begin
-  { A horizontal chart stacks its categories down the left edge, where the scarce
-    dimension is height, so twenty of them crowd on line height alone and the second
-    "row" is a column further from the plot. }
+  { A horizontal chart stacks its labels one per bar down the left edge. A second "row"
+    there would be a second column, costing the plot a whole label width for a zig-zag
+    that reads worse than the single column, so the setting leaves the chart exactly as
+    SingleRow draws it. Twenty categories crowd on line height, so SingleRow drops labels
+    here and there is something staggering could have changed. }
   const Categories = UniformCategories(20);
-  const Plot = TChartPlot.Create;
-  try
-    Plot.Kind := TChartKind.Bar;
-    Plot.Orientation := TChartOrientation.Horizontal;
-    Plot.Categories := Categories;
-    Plot.AddSeries('Only', ValuesFor(Categories));
+  const SingleRowCanvas = TRecordingCanvas.Create;
+  const SingleRowReference: IChartCanvas = SingleRowCanvas;
 
-    var AxisOptions := Plot.XAxis;
-    AxisOptions.CategoryLabelLayout := TCategoryLabelLayout.Staggered;
-    Plot.XAxis := AxisOptions;
+  RenderHorizontal(Categories, TCategoryLabelLayout.SingleRow, SingleRowReference);
+  RenderHorizontal(Categories, TCategoryLabelLayout.Staggered, FCanvas);
 
-    TChartRenderer.Render(Plot, FCanvas, ChartWidth, ChartHeight);
+  Assert.IsTrue(DrawnLabelCount(Categories) < Length(Categories),
+    'The chart must be crowded enough to drop labels, or the comparison proves nothing');
 
-    const Calls = LabelCallsFor(Categories);
-    Assert.AreEqual(Length(Categories), Length(Calls),
-      'A second column saves every label a single column had to drop');
-
-    Assert.AreEqual(2, RowCountOf(Calls, True), 'The labels must sit in exactly two columns');
-    for var Call in Calls do
-    begin
-      Assert.IsTrue(Call.TextX > 0, 'A second column must not run off the left of the chart');
-    end;
-  finally
-    Plot.Free;
+  const Expected = SingleRowCanvas.Calls;
+  const Actual = FRecordingCanvas.Calls;
+  Assert.AreEqual(Expected.Count, Actual.Count, 'Staggered must draw exactly the calls SingleRow draws');
+  for var Index := 0 to Expected.Count - 1 do
+  begin
+    const Message = Format('Call %d must be identical under both layouts', [Index]);
+    Assert.IsTrue(Expected[Index].Kind = Actual[Index].Kind, Message);
+    Assert.AreEqual(Expected[Index].Text, Actual[Index].Text, Message);
+    Assert.AreEqual(Expected[Index].TextX, Actual[Index].TextX, 0.001, Message);
+    Assert.AreEqual(Expected[Index].TextY, Actual[Index].TextY, 0.001, Message);
+    Assert.IsTrue(Expected[Index].Bounds = Actual[Index].Bounds, Message);
   end;
 end;
 

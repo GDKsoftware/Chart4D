@@ -3200,11 +3200,6 @@ begin
 
   const Labels = LeftEdgeLabels(IsHorizontal);
   Result := WidestLabelWidth(Labels, AxisTextStyle) + LeftLabelGap;
-
-  { A horizontal chart runs its categories down this edge, so a staggered category axis
-    spends its extra rows here, as columns marching left away from the plot. }
-  if IsHorizontal then
-    Result := Result + ((CategoryLabelRowCount - 1) * CategoryLabelRowPitch);
 end;
 
 function TChartRenderJob.ComputeRightInset: Single;
@@ -3303,15 +3298,11 @@ begin
   if not AxisVisible then
     Exit(0);
 
-  { A vertical chart runs its categories along this edge, so a staggered category axis
-    spends its extra rows here. The room is reserved whenever the layout is selected,
-    whether or not a label actually reaches the second row: a plot area that grew and
-    shrank by a line of text as the data or the window changed would be worse than one
-    that is a line shorter throughout. }
-  const IsBottomEdgeStaggered = not IsHorizontal;
-  var ExtraRows := 0;
-  if IsBottomEdgeStaggered then
-    ExtraRows := CategoryLabelRowCount - 1;
+  { A staggered category axis, which only a vertical chart has, spends its extra row here.
+    The room is reserved whenever the layout is selected, whether or not a label actually
+    reaches the second row: a plot area that grew and shrank by a line of text as the data
+    or the window changed would be worse than one that is a line shorter throughout. }
+  const ExtraRows = CategoryLabelRowCount - 1;
 
   const SampleSize = FCanvas.MeasureText('0', AxisTextStyle);
   Result := BottomLabelMarginAbove + SampleSize.Height + (ExtraRows * CategoryLabelRowPitch) +
@@ -3427,15 +3418,12 @@ end;
 procedure TChartRenderJob.DrawCategoryAxisLabel(const Pixel: Single; const LabelText: string;
                                                 const TextStyle: TChartTextStyle; const Row: Integer);
 begin
-  { Rows step away from the plot area, which is down the page below a vertical chart and
-    to the left of a horizontal one, so the offset is subtracted there rather than added. }
-  const RowOffset = Row * CategoryLabelRowPitch;
-
+  { Only the bottom edge of a vertical chart ever has a second row, stepping down the page
+    away from the plot; a horizontal chart's labels always have Row 0. }
   if FGeometry.IsHorizontal then
-    FCanvas.DrawText(AxisLabelRightEdge - RowOffset, Pixel, LabelText, TextStyle,
-                     TTextAlignH.Right, TTextAlignV.Middle)
+    FCanvas.DrawText(AxisLabelRightEdge, Pixel, LabelText, TextStyle, TTextAlignH.Right, TTextAlignV.Middle)
   else
-    FCanvas.DrawText(Pixel, AxisLabelTopEdge + RowOffset, LabelText, TextStyle,
+    FCanvas.DrawText(Pixel, AxisLabelTopEdge + Row * CategoryLabelRowPitch, LabelText, TextStyle,
                      TTextAlignH.Center, TTextAlignV.Top);
 end;
 
@@ -3475,10 +3463,17 @@ begin
     Result := TextSize.Width;
 end;
 
+/// <summary>
+/// Whether the category labels get a second row: only for a discrete category axis along
+/// the bottom of a vertical chart. A horizontal chart stacks its labels one per bar down the
+/// left edge, where a second "row" would be a second column costing the plot a whole label
+/// width, so it keeps the single-row rule however the setting reads.
+/// </summary>
 function TChartRenderJob.IsCategoryAxisStaggered: Boolean;
 begin
   const IsStaggered = (FPlot.XAxis.CategoryLabelLayout = TCategoryLabelLayout.Staggered);
-  Result := IsStaggered and not FIsContinuousX and not IsPieOrDonut;
+  const IsVertical = (FPlot.Orientation = TChartOrientation.Vertical);
+  Result := IsStaggered and IsVertical and not FIsContinuousX and not IsPieOrDonut;
 end;
 
 function TChartRenderJob.CategoryLabelRowCount: Integer;
@@ -3490,19 +3485,11 @@ begin
 end;
 
 /// <summary>
-/// The step from one category label row to the next, along the direction the rows march
-/// away from the plot area. A vertical chart stacks its rows downwards, so the step is a
-/// line of axis text plus a clear gap; a horizontal chart puts them side by side to the
-/// left of the plot, so the step is the width of the widest label plus the same gap the
-/// single-row layout leaves. Measured from <c>FPlot.Orientation</c> rather than from
-/// <c>FGeometry</c>, because the layout needs it before the geometry exists.
+/// The step from one category label row to the next, downward below a vertical chart: a
+/// line of axis text plus a clear gap, so the second row reads as its own line.
 /// </summary>
 function TChartRenderJob.CategoryLabelRowPitch: Single;
 begin
-  const IsHorizontal = (FPlot.Orientation = TChartOrientation.Horizontal);
-  if IsHorizontal then
-    Exit(WidestLabelWidth(CategoryAxisLabels, AxisTextStyle) + LeftLabelGap);
-
   const SampleSize = FCanvas.MeasureText('0', AxisTextStyle);
   Result := SampleSize.Height + (StaggeredCategoryLabelGapAtReferenceScale * FStyle.ScaleFactor);
 end;

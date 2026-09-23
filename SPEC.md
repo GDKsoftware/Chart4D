@@ -650,8 +650,8 @@ per row down the left edge, where height, not width, is the scarce dimension). A
 fits no row is dropped. The default axis has one row, which makes this exactly the
 walk it has always been: index 0 is always kept, since nothing has been placed when it is
 offered the only row, and every later label is kept only when it clears the last one kept.
-`XAxis.CategoryLabelLayout = Staggered` gives the axis a second row instead of dropping a
-crowded label straight away (4.28). This
+`XAxis.CategoryLabelLayout = Staggered` gives the axis of a vertical chart a second row
+instead of dropping a crowded label straight away (4.28). This
 is deterministic (the same categories, band, rows and font always select the same
 placements) and
 applies to every kind that draws a discrete category axis, including `Histogram`; there is
@@ -1673,11 +1673,18 @@ type
 ```
 
 `TAxisOptions` carries `CategoryLabelLayout: TCategoryLabelLayout` (default `SingleRow`),
-declared in 4.5. It is read from `XAxis` whatever the chart's `Orientation`, since the
-categories are the X axis either way, and it applies only to a discrete category axis: a
-continuous or date X axis (4.16) and `Pie`/`Donut` (4.23) ignore it, the first because
-`NiceBreaks`/`DateBreaks` already space their breaks to fit, the others because they have
-no category axis at all.
+declared in 4.5 and read from `XAxis`. It applies only to a discrete category axis along
+the bottom of a `Vertical` chart. Everything else ignores it:
+
+- A continuous or date X axis (4.16) spaces its breaks to fit by construction
+  (`NiceBreaks`/`DateBreaks`).
+- `Pie`/`Donut` (4.23) have no category axis at all.
+- A `Horizontal` chart stacks its category labels one per bar down the left edge, where a
+  label only collides with its neighbours once the bars are thinner than a line of text. A
+  second row there would be a second column, costing the plot a whole label width for a
+  zig-zag that reads worse than the single column it replaces; a chart with that many
+  categories is better served by more height. So a horizontal chart keeps the single-row
+  rule, and draws exactly what `SingleRow` draws.
 
 `SingleRow` is the thinning rule of 4.8 unchanged: one row, and a label that does not fit
 beside the last one kept is dropped. `Staggered` gives the axis
@@ -1713,17 +1720,13 @@ top of each other; it only raises how many fit. The walk is the one in 4.8, over
 rather than over a single row, so with one row it selects exactly the indices it always
 did and `SingleRow` output is untouched.
 
-Rows are numbered from the plot area outward and step by
-`TChartRenderJob.CategoryLabelRowPitch`, which is a line of `AxisTextStyle` text plus
-`StaggeredCategoryLabelGapAtReferenceScale` = 2 px at the reference scale for a vertical
-chart (rows stack downward, below the plot), and the widest category label plus
-`LeftLabelGap` for a horizontal one (rows stack leftward, beside the plot, so a "row" is
-really a column).
+Rows are numbered from the plot area outward, stacking downward below the plot, and step
+by `TChartRenderJob.CategoryLabelRowPitch`: a line of `AxisTextStyle` text plus
+`StaggeredCategoryLabelGapAtReferenceScale` = 2 px at the reference scale.
 
-The room for the extra row comes out of the plot area:
-`ComputeBottomAxisLabelHeight` adds one `CategoryLabelRowPitch` for a vertical chart and
-`ComputeLeftInset` adds one for a horizontal one. It is reserved whenever `Staggered` is
-set, whether or not any label actually reaches the second row, so the plot area does not
+The room for the extra row comes out of the plot area: `ComputeBottomAxisLabelHeight` adds
+one `CategoryLabelRowPitch`. It is reserved whenever `Staggered` applies,
+whether or not any label actually reaches the second row, so the plot area does not
 grow and shrink by a line of text as the data or the window size changes; a caller who
 wants the line back leaves the axis at `SingleRow`.
 
@@ -1971,7 +1974,8 @@ read from the `BDS` environment variable, defaulting to
   their rows, each second-row label still centred on its own band, exactly midway between
   the first-row labels either side of it; the
   second row stays inside the chart and is paid for by a shorter plot area; a horizontal
-  chart staggers into two columns instead; and a continuous X axis ignores the setting.
+  chart crowded enough to drop labels draws exactly the same calls under `Staggered` as
+  under `SingleRow`; and a continuous X axis ignores the setting.
 
 - `Chart4D.SegmentLabels.Tests.pas`: the `Pie`/`Donut` segment labels of 4.23, against a
   `TRecordingCanvas`. In the recorded call order every segment label of a pie and of a
