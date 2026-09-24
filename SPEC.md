@@ -518,6 +518,7 @@ type
     property Annotations: TArray<TChartAnnotation> read ...;
     property ValueLabels: TValueLabelMode ...;         // default None; see 4.12
     property SegmentLabels: TSegmentLabelMode ...;     // default CategoryAndPercentage; see 4.29
+    property SegmentLabelDecimals: Integer ...;        // default AutomaticDecimals; see 4.29
     property HighlightedSeriesIndex: Integer ...;      // default -1; see 4.13
     property DonutCenterText: string ...;              // default ''; Donut only, see 4.24
     property OnChanged: TNotifyEvent ...;
@@ -1429,8 +1430,9 @@ last point back to the first, back to `Center`.
 **Segment labels**, drawn unconditionally (not gated by `ValueLabels`, 4.12, which has no
 effect on `Pie`/`Donut`): for each wedge with a non-zero sweep angle, at the wedge's
 mid-angle (`StartAngle + SweepAngle / 2`) and `0.65 * OuterRadius` from center, text
-`Format('%s (%s)', [Categories[i], TAxisScale.FormatPercentage(Values[i] / Total, YAxis)])`,
-which is a whole percent unless `YAxis.Decimals` asks for decimals (4.27), or the share or
+`Format('%s (%s)', [Categories[i], TAxisScale.FormatPercentage(Values[i] / Total, Options)])`,
+where `Options` is `YAxis` with `Decimals` replaced by `SegmentLabelDecimals`, so a whole
+percent unless `SegmentLabelDecimals` asks for decimals (4.27, 4.29), or the share or
 the category alone, or no label at all, as `SegmentLabels` selects (4.29), with the same
 background box as a value label (4.12), in `LabelBackgroundColor`, and text in whichever of
 `TextColor` and white reads better over that box on its own wedge (4.29), and the exact same deterministic
@@ -1655,8 +1657,10 @@ than the value's. `TAxisScale.FormatPercentage(Proportion, Options)` multiplies
 `Proportion` by 100, formats it with `Options` exactly as above except that
 `AutomaticDecimals` means 0 decimals there, and appends `'%'`. It is what the
 `StackMode.Proportions` value axis (4.8) and the `Pie`/`Donut` segment labels (4.23, 4.24)
-use, so both show whole percents until `YAxis.Decimals` asks for decimals, which is the
-output they had before this setting existed.
+use, so both show whole percents until asked for decimals: the axis through
+`YAxis.Decimals`, the segment labels through `TChartPlot.SegmentLabelDecimals` (4.29),
+since a pie has no value axis to set them on. A whole percent is rounded like any other
+`FormatFloat` output, half away from zero, so a share of exactly 12.5% reads `'13%'`.
 
 Manual `BreakLabels` still win over all of it, and a date axis ignores `Decimals` entirely
 (4.16), exactly as it ignores `UseThousandSeparator`.
@@ -1751,10 +1755,17 @@ type
 - `None`: no segment labels at all. The wedges still get their hit targets, anchored where
   the label would have been, so hover and tooltips work as before.
 
-The default is listed first so that a zeroed field already means it. The percentage follows
-`YAxis.Decimals` in every mode that shows one (4.27). Whatever the mode, a label is placed
-and dropped by the rule of 4.23: after every wedge, largest segment first, skipping one
-that collides with a label already drawn, so a shorter label only lets more of them fit.
+The default is listed first so that a zeroed field already means it.
+
+`TChartPlot` also carries `SegmentLabelDecimals: Integer`, default `AutomaticDecimals`, the
+number of decimals of the percentage in every mode that shows one, with the meaning of 4.27
+(`AutomaticDecimals` is a whole percent). The percentage takes `YAxis.LocaleName` and
+`YAxis.UseThousandSeparator`, as the tooltip does, but never `YAxis.Decimals`: a pie has no
+value axis on screen, so its decimals would be set somewhere the reader cannot see.
+
+Whatever the mode, a label is placed and dropped by the rule of 4.23: after every wedge,
+largest segment first, skipping one that collides with a label already drawn, so a shorter
+label only lets more of them fit.
 Other chart kinds ignore the setting.
 
 **Label background.** `TChartStyle` carries `LabelBackgroundColor: TAlphaColor`, default
@@ -1899,7 +1910,7 @@ read from the `BDS` environment variable, defaulting to
   and outer radius and within its angular span, including a case straddling the 0/360
   wraparound, and misses when outside either bound.
 - `Chart4D.Preview.Tests.pas`: `TChartPreview.FillFrom` (4.26) carries the text and layout
-  settings over, `SegmentLabels` among them (4.29), gives a scatter series its X values and a range series its end values,
+  settings over, `SegmentLabels` and `SegmentLabelDecimals` among them (4.29), gives a scatter series its X values and a range series its end values,
   adds a second series for `GroupedBar`, and refilling replaces the sample instead of
   adding to it.
 - `Chart4D.View.Tests.pas`: against a `TRecordingCanvas`, `TChartView.Render` (4.25) draws on
@@ -1929,7 +1940,8 @@ read from the `BDS` environment variable, defaulting to
   `AddArrowSeries` set `Kind`/`Orientation`/`Values`/`EndValues` like `AddDumbbellSeries`;
   `AddRangeBandSeries` appends (does not clear) and sets `IsRangeBand`; `CategoryColor`
   cycles the palette by category index (4.7); `SegmentLabels` defaults to
-  `CategoryAndPercentage` and setting it fires `OnChanged` (4.29); and for `Palette` (4.30),
+  `CategoryAndPercentage`, `SegmentLabelDecimals` to `AutomaticDecimals`, and setting either
+  fires `OnChanged` (4.29); and for `Palette` (4.30),
   an empty one gives `DefaultPalette` over two full cycles, a custom one colors categories in
   its own order and wraps by its own length, colors a series without its own color while a
   series' own color still wins and the highlight still mutes the others, and neither a write
@@ -1985,7 +1997,9 @@ read from the `BDS` environment variable, defaulting to
   category keeps its label. On a pie of three equal segments with no legend, each
   `SegmentLabels` mode of 4.29 draws exactly its own text: `'A (33%)'`, `'33%'` alone or
   `'A'` alone, and `None` draws no text and no label box while the hit map still holds all
-  three segments. By default every label sits on a white box in the dark text color; a custom
+  three segments. On the same pie a `SegmentLabelDecimals` of 1 draws `'33.3%'`, and
+  `'33,3%'` under a Dutch `YAxis.LocaleName`, while a `YAxis.Decimals` of 2 leaves the
+  labels at `'33%'`. By default every label sits on a white box in the dark text color; a custom
   opaque `LabelBackgroundColor` replaces the white box; a transparent one draws the text with
   no box at all, turns it white on the blue and dark red wedges and keeps it dark on the
   orange one, and still drops the colliding 1% label. With no box, a `MinimumTextContrast` of

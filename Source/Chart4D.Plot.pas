@@ -51,6 +51,7 @@ type
     FAnnotations: TArray<TChartAnnotation>;
     FValueLabels: TValueLabelMode;
     FSegmentLabels: TSegmentLabelMode;
+    FSegmentLabelDecimals: Integer;
     FHighlightedSeriesIndex: Integer;
     FDonutCenterText: string;
     FOnChanged: TNotifyEvent;
@@ -72,6 +73,7 @@ type
     procedure SetLegendReversed(const Value: Boolean);
     procedure SetValueLabels(const Value: TValueLabelMode);
     procedure SetSegmentLabels(const Value: TSegmentLabelMode);
+    procedure SetSegmentLabelDecimals(const Value: Integer);
     procedure SetHighlightedSeriesIndex(const Value: Integer);
     procedure SetDonutCenterText(const Value: string);
 
@@ -223,6 +225,13 @@ type
     /// </summary>
     property SegmentLabels: TSegmentLabelMode read FSegmentLabels write SetSegmentLabels;
     /// <summary>
+    /// The number of decimals the percentage in a <c>Pie</c> or <c>Donut</c> segment label
+    /// is shown with. Default <c>AutomaticDecimals</c>, which shows whole percents. The
+    /// percentage takes its locale and thousand separator from <c>YAxis</c>, like the
+    /// tooltip, but not its decimals: a pie has no value axis to set them on.
+    /// </summary>
+    property SegmentLabelDecimals: Integer read FSegmentLabelDecimals write SetSegmentLabelDecimals;
+    /// <summary>
     /// The index of the series drawn in its own color while every other series is muted
     /// to <c>ChartLightGrey</c>, or -1 (default) to draw every series in its own color.
     /// </summary>
@@ -314,6 +323,7 @@ begin
   FLegendPosition := TLegendPosition.Top;
   FValueLabels := TValueLabelMode.None;
   FSegmentLabels := TSegmentLabelMode.CategoryAndPercentage;
+  FSegmentLabelDecimals := AutomaticDecimals;
   FHighlightedSeriesIndex := -1;
 end;
 
@@ -643,6 +653,12 @@ end;
 procedure TChartPlot.SetSegmentLabels(const Value: TSegmentLabelMode);
 begin
   FSegmentLabels := Value;
+  NotifyChanged;
+end;
+
+procedure TChartPlot.SetSegmentLabelDecimals(const Value: Integer);
+begin
+  FSegmentLabelDecimals := Value;
   NotifyChanged;
 end;
 

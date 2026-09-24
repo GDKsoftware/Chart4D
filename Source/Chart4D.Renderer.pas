@@ -2635,8 +2635,11 @@ end;
 
 function TCircularSeriesRenderer.SegmentLabelText(const Wedge: TPieWedge; const Frame: TPieFrame): string;
 begin
+  var PercentageOptions := FPlot.YAxis;
+  PercentageOptions.Decimals := FPlot.SegmentLabelDecimals;
+
   const CategoryText = CategoryLabel(Wedge.CategoryIndex);
-  const PercentageText = TAxisScale.FormatPercentage(Wedge.Value / Frame.Total, FPlot.YAxis);
+  const PercentageText = TAxisScale.FormatPercentage(Wedge.Value / Frame.Total, PercentageOptions);
 
   case FPlot.SegmentLabels of
     TSegmentLabelMode.CategoryAndPercentage : Result := Format('%s (%s)', [CategoryText, PercentageText]);

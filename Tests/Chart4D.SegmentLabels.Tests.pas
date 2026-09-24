@@ -21,6 +21,7 @@ uses
   System.Types,
   System.UITypes,
   DUnitX.TestFramework,
+  Chart4D.Axis,
   Chart4D.Tests.Asserts,
   Chart4D.Canvas.Interfaces,
   Chart4D.Style,
@@ -41,6 +42,7 @@ type
     function RenderThirds(const Mode: TSegmentLabelMode;
                           const LabelBackground: TAlphaColor = ChartLabelBackground): TArray<TChartHitTarget>;
     function RenderThirdsWithStyle(const Mode: TSegmentLabelMode; const Style: TChartStyle): TArray<TChartHitTarget>;
+    procedure RenderThirdsWithDecimals(const SegmentLabelDecimals: Integer; const YAxis: TAxisOptions);
     function BoxlessStyleWithMinimumContrast(const MinimumContrast: Double): TChartStyle;
     function LastCallIndexOfKind(const Kind: TCanvasCallKind): Integer;
     function CountOfText(const Text: string): Integer;
@@ -78,6 +80,15 @@ type
     procedure SegmentLabels_None_DrawsNoLabelsButKeepsTheHitTargets;
 
     [Test]
+    procedure SegmentLabelDecimals_One_ShowsOneDecimal;
+
+    [Test]
+    procedure SegmentLabelDecimals_Automatic_IgnoresTheValueAxisDecimals;
+
+    [Test]
+    procedure SegmentLabelDecimals_DutchValueAxisLocale_UsesCommaDecimalSeparator;
+
+    [Test]
     procedure LabelBackground_Default_DrawsWhiteBoxesWithTheStyleTextColor;
 
     [Test]
@@ -106,6 +117,7 @@ implementation
 
 uses
   System.SysUtils,
+  Chart4D.Consts,
   Chart4D.Plot,
   Chart4D.Renderer;
 
@@ -182,6 +194,29 @@ begin
     Plot.Style := Style;
 
     TChartRenderer.Render(Plot, FCanvas, ChartWidth, ChartHeight, Result);
+  finally
+    Plot.Free;
+  end;
+end;
+
+/// <summary>
+/// Renders the three equal segments of <c>RenderThirds</c> in <c>Percentage</c> mode, with the
+/// given segment label decimals and value axis options.
+/// </summary>
+procedure TSegmentLabelTests.RenderThirdsWithDecimals(const SegmentLabelDecimals: Integer;
+                                                      const YAxis: TAxisOptions);
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Pie;
+    Plot.LegendPosition := TLegendPosition.None;
+    Plot.Categories := ['A', 'B', 'C'];
+    Plot.AddSeries('Share', [1, 1, 1]);
+    Plot.SegmentLabels := TSegmentLabelMode.Percentage;
+    Plot.SegmentLabelDecimals := SegmentLabelDecimals;
+    Plot.YAxis := YAxis;
+
+    TChartRenderer.Render(Plot, FCanvas, ChartWidth, ChartHeight);
   finally
     Plot.Free;
   end;
@@ -325,6 +360,34 @@ begin
   Assert.AreEqual(0, FRecordingCanvas.CountOfKind(TCanvasCallKind.FillRect),
     'No label means no label background box either');
   Assert.AreEqual(3, Length(HitMap), 'Hover must still find every segment when it carries no label');
+end;
+
+procedure TSegmentLabelTests.SegmentLabelDecimals_One_ShowsOneDecimal;
+begin
+  RenderThirdsWithDecimals(1, TAxisOptions.Default);
+
+  Assert.AreEqual(3, CountOfText('33.3%'), 'Every segment must show its share at one decimal');
+end;
+
+procedure TSegmentLabelTests.SegmentLabelDecimals_Automatic_IgnoresTheValueAxisDecimals;
+begin
+  { A pie has no value axis on screen, so the decimals set on it must not reach the labels. }
+  var YAxis := TAxisOptions.Default;
+  YAxis.Decimals := 2;
+
+  RenderThirdsWithDecimals(AutomaticDecimals, YAxis);
+
+  Assert.AreEqual(3, CountOfText('33%'), 'The labels must stay whole percents');
+end;
+
+procedure TSegmentLabelTests.SegmentLabelDecimals_DutchValueAxisLocale_UsesCommaDecimalSeparator;
+begin
+  var YAxis := TAxisOptions.Default;
+  YAxis.LocaleName := 'nl-NL';
+
+  RenderThirdsWithDecimals(1, YAxis);
+
+  Assert.AreEqual(3, CountOfText('33,3%'), 'The labels must follow the value axis locale');
 end;
 
 procedure TSegmentLabelTests.LabelBackground_Default_DrawsWhiteBoxesWithTheStyleTextColor;
