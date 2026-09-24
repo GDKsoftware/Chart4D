@@ -188,7 +188,8 @@ begin
   if not FHover.IsVisible then
     Exit;
 
-  TChartTooltip.Draw(Canvas, FPlot.Style, FHover.Info, Width, Height, FPlot.YAxis.LocaleName);
+  TChartTooltip.Draw(Canvas, FPlot.Style, FHover.Info, Width, Height, FPlot.YAxis.LocaleName,
+                     FPlot.YAxis.Decimals, FPlot.YAxis.UseThousandSeparator);
 end;
 
 procedure TChartView.Invalidate;

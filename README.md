@@ -113,6 +113,30 @@ Labels are placed automatically, moved inside the plot when they would cover an 
 and skipped when they would collide with a label already drawn. The result is deterministic,
 so a chart looks the same on every run.
 
+Pie and donut segments label themselves, "Fossil (70%)" by default. When the legend already
+names the categories, show the share alone:
+
+```pascal
+Plot.SegmentLabels := TSegmentLabelMode.Percentage;  // CategoryAndPercentage, Percentage, Category, None
+```
+
+Where two segment labels would collide, the larger segment keeps its label.
+
+Labels sit on an opaque white box by default. The box color is part of the style, and a
+transparent one puts the text straight on the ink:
+
+```pascal
+var Style := Plot.Style;
+Style.LabelBackgroundColor := TAlphaColors.Null;  // no box; ChartLabelBackground restores it
+Plot.Style := Style;
+```
+
+A segment label then keeps the style's text color while it reaches `MinimumTextContrast`
+against its own wedge (4.5 by default, the WCAG AA level), and only below that takes
+whichever of the text color and white reads better. Set it to 3 to keep dark text on
+mid-tone wedges, or to 1 to never switch. Value labels and text annotations use the same
+box color; the hover tooltip always keeps its white box.
+
 To argue one point while still showing context, mute everything except one series:
 
 ```pascal
@@ -123,6 +147,17 @@ Plot.HighlightedSeriesIndex := 4;
 
 A series with an explicitly set colour keeps it, so a deliberate choice always survives.
 
+Series and categories without a colour of their own cycle through six editorial colours. A
+pie of eleven transport modes would repeat five of them, so give the style a longer palette:
+
+```pascal
+var Style := Plot.Style;
+Style.Palette := [ChartBlue, ChartOrange, ChartDarkRed, ChartGreen, ...];  // empty = the six defaults
+Plot.Style := Style;
+```
+
+The legend, the hover highlight and the segment label contrast all follow it.
+
 ## Axes
 
 ```pascal
@@ -131,6 +166,7 @@ YAxis.MinValue := 0;                             // NaN for automatic
 YAxis.Breaks := [0, 50, 100];                    // empty for automatic
 YAxis.BreakLabels := ['none', 'half', 'all'];    // one label per break; empty to format the breaks
 YAxis.UseThousandSeparator := True;              // 40,000 instead of 40000
+YAxis.Decimals := 1;                             // 40,000.0; AutomaticDecimals to trim
 YAxis.LabelSuffix := '%';
 YAxis.SuffixOnLastOnly := True;                  // the unit on the last label only
 YAxis.LocaleName := 'nl-NL';                     // 40.000 for a Dutch audience
@@ -139,11 +175,43 @@ Plot.YAxis := YAxis;
 
 var XAxis := Plot.XAxis;
 XAxis.DateMode := TAxisDateMode.Auto;            // days, months, quarters or years
+XAxis.CategoryLabelLayout := TCategoryLabelLayout.Staggered;
 Plot.XAxis := XAxis;
 ```
 
 Numbers use the invariant convention unless you set `LocaleName`, so test output is
 reproducible.
+
+`Decimals` is `AutomaticDecimals` by default, which keeps up to ten decimals and drops the
+trailing zeros, so `5.0` reads as `5`. Set it to a count and every number that axis
+formats gets exactly that many, padded where the value has fewer: break labels, value
+labels and the tooltip. `0` rounds to whole numbers. Percentages, on the proportions axis
+and on pie and donut segments, stay whole until you set it, and then follow it too.
+
+A tooltip formats its value with the value axis' `Decimals`, `UseThousandSeparator` and
+`LocaleName`, so it reads as the same number the axis beside it shows.
+
+A category label that will not fit beside its neighbour is dropped, so a crowded axis
+thins itself out instead of printing on top of itself. `CategoryLabelLayout` set to
+`Staggered` gives that axis a second row to try first. Ten country names on a 640 px axis
+leave every neighbouring pair overlapping, so only every other one survives:
+
+```
+Netherlands  France     Italy
+```
+
+Staggered, the names it had to drop go on the row below, each still centred under its own
+bar, and all ten fit:
+
+```
+Netherlands  France     Italy
+       Belgium    Germany
+```
+
+A label that fits neither row is still dropped. The second row costs a line of plot
+height, reserved whenever you ask for the layout, so the plot does not jump about as the
+data or the window changes. Staggering applies to the bottom axis of a vertical chart; a
+horizontal chart already gives each label its own line down the left edge, and ignores it.
 
 For a horizontal chart the value axis is still `YAxis`. The orientation swaps where the axes
 are drawn, not what they mean.

@@ -96,7 +96,7 @@ multiplied by `TChartStyle.ScaleFactor` when rendering.
 | Tooltip | white box, border $FFCBCBCB width 1, text 16 $FF222222, 8 px padding; highlight circle radius 5 in the series color |
 | Series line width | 3 |
 | Font | 'Helvetica'; on Windows 'Arial' (`{$IFDEF MSWINDOWS}`) |
-| Value labels | text `AxisFontSize`/`TextColor`, white background box (3 px padding), same convention as `TextLabel` annotations (see 4.12) |
+| Value labels | text `AxisFontSize`/`TextColor`, background box in `LabelBackgroundColor`, white by default (3 px padding), same convention as `TextLabel` annotations and segment labels (see 4.12, 4.29) |
 | Series highlight (muted series) | drawn in `ChartLightGrey` (see 4.13) |
 | Scatter point radius | 4 (uniform, used when a series has no per-point `Sizes`; see 4.19) |
 | Bubble radius range | 4 to 24, area-proportional (`Sqrt` scaling), domain shared across the whole plot (see 4.19) |
@@ -194,8 +194,9 @@ coordinate is the 0-based category index as `Double`. `Pie`/`Donut` charts have 
 axes to define a data space, so annotations there use a coordinate space of their own:
 X is still the 0-based category index, and Y is a fraction of the plot height, 0 at
 the bottom edge and 1 at the top (4.23). `FontSize`/`LineWidth` value 0
-means "use style default". `TextLabel` annotations are drawn with a white background
-rectangle behind the text so they stay readable on top of series.
+means "use style default". `TextLabel` annotations are drawn with a background
+rectangle behind the text, in the style's `LabelBackgroundColor` (opaque white by default,
+4.29), so they stay readable on top of series.
 
 `TChartKindTraits` is the single authority on the per-kind facts that more than one
 part of the library has to agree on; every site that needs one of these answers asks
@@ -219,6 +220,7 @@ spanning the full plot width; `VerticalRangeOverlay` is a filled band between `X
 const
   DefaultExportWidth  = 640;
   DefaultExportHeight = 450;
+  AutomaticDecimals   = -1; // TAxisOptions.Decimals default; see 4.27
 ```
 
 The `resourcestring` entries for the capabilities in 4.12 to 4.25:
@@ -261,9 +263,32 @@ type
     MinBubbleRadius: Single;         // 4, see 4.19
     MaxBubbleRadius: Single;         // 24, see 4.19
     DonutInnerRadiusFactor: Single;  // 0.6, see 4.24
+    LabelBackgroundColor: TAlphaColor; // ChartLabelBackground, see 4.29
+    MinimumTextContrast: Double;       // 4.5, see 4.29
+    Palette: TArray<TAlphaColor>;      // [] = DefaultPalette, see 4.30
     class function Default: TChartStyle; static;
   end;
+
+  TChartColors = record
+    class function Blend(const Over, Under: TAlphaColor): TAlphaColor; static;
+    class function RelativeLuminance(const Color: TAlphaColor): Double; static;
+    class function ContrastRatio(const First, Second: TAlphaColor): Double; static;
+    class function ReadableTextColor(const Preferred, Background: TAlphaColor;
+                                     const MinimumContrast: Double = MaximumContrastRatio): TAlphaColor; static;
+  end;
 ```
+
+`MaximumContrastRatio = 21.0` (black against white) is declared alongside.
+
+`TChartColors` is the color arithmetic behind legible label text (4.29): `Blend`
+composites `Over` onto `Under` with the "over" operator, `RelativeLuminance` and
+`ContrastRatio` are the WCAG 2 definitions (sRGB channels linearized, weights 0.2126,
+0.7152, 0.0722; ratio `(L1 + 0.05) / (L2 + 0.05)` with `L1` the lighter), and
+`ReadableTextColor` returns `Preferred` when its contrast ratio against `Background` is at
+least `MinimumContrast`, and otherwise whichever of `Preferred` and white has the higher
+ratio, `Preferred` on a tie. With the default `MaximumContrastRatio` only black on white
+reaches the minimum, and there `Preferred` is also the better of the two, so the default
+always returns the more legible color; a minimum of 1 or less always returns `Preferred`.
 
 ### 4.4 Chart4D.Series.pas
 
@@ -302,6 +327,8 @@ type
     Breaks: TArray<Double>;        // empty = automatic (NiceBreaks)
     BreakLabels: TArray<string>;   // empty = automatic (BuildLabels)
     UseThousandSeparator: Boolean; // default False
+    Decimals: Integer;             // default AutomaticDecimals; see 4.27
+    CategoryLabelLayout: TCategoryLabelLayout; // default SingleRow; see 4.28
     LabelSuffix: string;           // e.g. '%' or ' years'
     SuffixOnLastOnly: Boolean;     // default True ("90 years" on the last break only)
     Visible: Boolean;              // default True (axis text)
@@ -319,7 +346,13 @@ type
     class function FormatValue(const Value: Double;
                                const UseThousandSeparator: Boolean): string; overload; static;
     class function FormatValue(const Value: Double; const UseThousandSeparator: Boolean;
+                               const Decimals: Integer): string; overload; static;
+    class function FormatValue(const Value: Double; const UseThousandSeparator: Boolean;
                                const LocaleName: string): string; overload; static;
+    class function FormatValue(const Value: Double; const UseThousandSeparator: Boolean;
+                               const LocaleName: string; const Decimals: Integer): string; overload; static;
+    class function FormatPercentage(const Proportion: Double;
+                                    const Options: TAxisOptions): string; static;
     class function BuildLabels(const Breaks: TArray<Double>;
                                const Options: TAxisOptions): TArray<string>; static;
     class function LogBreaks(const MinValue, MaxValue: Double;
@@ -366,15 +399,16 @@ Examples (used in tests): `NiceBreaks(0, 85)` = `[0, 20, 40, 60, 80]`;
 
 `FormatValue`: invariant decimal separator `.`; thousand separator `,` (fixed English
 convention, not locale dependent, so output is reproducible). Trailing decimal zeros
-removed (`5.0 → '5'`).
+removed (`5.0 → '5'`). The overloads taking a `Decimals` count fix the number of decimals
+instead (4.27).
 
 `BuildLabels`: when `Options.DateMode <> TAxisDateMode.None` (4.16), every break is
 formatted with `FormatDateValue(Break, Mode, Options.LocaleName)` instead of the rules
 below, where `Mode` is the concrete date mode resolved once from the data range before
 the breaks were placed (4.16), never a second resolution from the break span; and
-`LabelSuffix`/`UseThousandSeparator` are ignored. Otherwise: format every break with `FormatValue`
-(the 3-argument overload when `Options.LocaleName <> ''`, otherwise the 2-argument
-invariant overload); when `LabelSuffix <> ''` append it to the last break only when
+`LabelSuffix`/`UseThousandSeparator`/`Decimals` are ignored. Otherwise: format every break with `FormatValue`
+at `Options.Decimals` decimals (4.27), through `Options.LocaleName` when it is non-empty
+and the invariant convention otherwise; when `LabelSuffix <> ''` append it to the last break only when
 `SuffixOnLastOnly`, otherwise to every break. When `BreakLabels` is non-empty it wins
 entirely, before either of the above.
 
@@ -483,6 +517,7 @@ type
     property LegendReversed: Boolean ...;
     property Annotations: TArray<TChartAnnotation> read ...;
     property ValueLabels: TValueLabelMode ...;         // default None; see 4.12
+    property SegmentLabels: TSegmentLabelMode ...;     // default CategoryAndPercentage; see 4.29
     property HighlightedSeriesIndex: Integer ...;      // default -1; see 4.13
     property DonutCenterText: string ...;              // default ''; Donut only, see 4.24
     property OnChanged: TNotifyEvent ...;
@@ -492,12 +527,13 @@ type
 Behavior:
 
 - `SeriesColor(Index)`: when `HighlightedSeriesIndex` is `-1` (default) or out of range,
-  the series' own `Color` when non-zero, otherwise
-  `DefaultPalette[Index mod Length(DefaultPalette)]`. When `HighlightedSeriesIndex` is a
+  the series' own `Color` when non-zero, otherwise palette color `Index`: the plot's
+  `Style.Palette` when it is non-empty, `DefaultPalette` when it is empty, wrapping past its
+  length (4.30). When `HighlightedSeriesIndex` is a
   valid series index, `SeriesColor(HighlightedSeriesIndex)` still resolves as above, and
   `SeriesColor` of every other index returns `ChartLightGrey` instead; see 4.13.
-- `CategoryColor(Index)`: `DefaultPalette[Index mod Length(DefaultPalette)]`, always;
-  categories have no per-category color override. Used by `Pie`/`Donut` (4.23, 4.24),
+- `CategoryColor(Index)`: palette color `Index`, exactly as for a series without its own
+  color (4.30); categories have no per-category color override. Used by `Pie`/`Donut` (4.23, 4.24),
   which color by category rather than by series.
 - `AddDumbbellSeries` sets `Kind := Dumbbell` and `Orientation := Horizontal` and fills
   `Values`/`EndValues` of a single series. `AddRangeSeries` and `AddArrowSeries` do the
@@ -587,7 +623,9 @@ way as `Dumbbell`, as the min/max across both `Values` and `EndValues` of the
 single series. Stacked uses per-category sums, with separate positive and negative sums
 per category so a mixed-sign stack reserves room on both sides of the baseline;
 `StackMode.Proportions` normalizes each
-category to 1.0 with fixed breaks `[0, 0.25, 0.5, 0.75, 1]` labelled `0%..100%`. Add 4%
+category to 1.0 with fixed breaks `[0, 0.25, 0.5, 0.75, 1]` labelled `0%..100%` through
+`TAxisScale.FormatPercentage(Break, YAxis)`, so `YAxis.Decimals` controls their decimals
+(4.27). Add 4%
 headroom above the data maximum; for the kinds that mark a position rather than a length
 from a zero baseline, `Line`, `Dumbbell`, `Range`, `Arrow`, `Scatter` and `DotPlot`
 (`TChartKindTraits.MarksPositionNotBaseline`, 4.1), also
@@ -601,16 +639,21 @@ per break across the plot area on the value axis; the baseline at value 0 on top
 `Donut` have no value axis and skip this whole computation, and skip `DrawAxisLabels`,
 `DrawGrid` and `DrawValueLabels` (4.12) entirely: see 4.23. Category axis: a label is
 centered under (or left of, when `Orientation = Horizontal`) its band, but is drawn only
-when it fits beside its neighbours: `TChartRenderJob.SelectedCategoryLabelIndices` walks
-categories left to right (top to bottom when horizontal), always keeps index 0, and keeps
-a later index only when the distance to the last kept label (`(Index - LastKept) *
-CategoryBand`) is at least the average of the two labels' measured extents (`IChartCanvas.
+when it fits beside its neighbours: `TChartRenderJob.CategoryLabelPlacements` walks
+categories left to right (top to bottom when horizontal) and gives each label the first
+axis row it fits on, where a label fits an empty row, or one whose last label is at least
+the average of the two labels' measured extents away (`(Index - LastInRow) *
+CategoryBand` against `IChartCanvas.
 MeasureText` on the actual label text and the actual `AxisTextStyle`; width for a vertical
 chart, height for a horizontal one, since a horizontal chart stacks its category labels one
-per row down the left edge, where height, not width, is the scarce dimension). The last
-category is then kept too whenever it does not collide with the last label the walk kept,
-so the first and last category stay labelled whenever they fit, anchoring the axis. This
-is deterministic (the same categories, band and font always select the same indices) and
+per row down the left edge, where height, not width, is the scarce dimension). A label that
+fits no row is dropped. The default axis has one row, which makes this exactly the
+walk it has always been: index 0 is always kept, since nothing has been placed when it is
+offered the only row, and every later label is kept only when it clears the last one kept.
+`XAxis.CategoryLabelLayout = Staggered` gives the axis of a vertical chart a second row
+instead of dropping a crowded label straight away (4.28). This
+is deterministic (the same categories, band, rows and font always select the same
+placements) and
 applies to every kind that draws a discrete category axis, including `Histogram`; there is
 no separate fixed-count thinning rule anywhere, since a measured fit is strictly more
 accurate than a fixed count and a second thinning rule alongside it would just be
@@ -857,15 +900,22 @@ type
     class procedure Draw(const Canvas: IChartCanvas; const Style: TChartStyle;
                          const Info: TChartHitInfo;
                          const Width, Height: Single;
-                         const LocaleName: string = ''); static;
+                         const LocaleName: string = '';
+                         const Decimals: Integer = AutomaticDecimals;
+                         const UseThousandSeparator: Boolean = False); static;
   end;
 ```
 
 `Draw`'s trailing `LocaleName` parameter defaults to `''` (invariant). When non-empty it
 is used to format `Info.Value` in
-`BuildLines` via the 3-argument `TAxisScale.FormatValue` overload (4.14) instead of the
+`BuildLines` via the locale `TAxisScale.FormatValue` overload (4.14) instead of the
 invariant one; callers pass the hovered axis' `LocaleName` (typically `Plot.YAxis
-.LocaleName`). `TChartHitTarget` carries sector fields for `Pie`/`Donut` hit-testing, and
+.LocaleName`). `Decimals` follows it and defaults to `AutomaticDecimals`; it fixes how
+many decimals `Info.Value` is shown with (4.27). `UseThousandSeparator` follows that and
+defaults to `False`; it groups that value's digits. The three are the value axis' own
+number formatting, and a caller passes all three from that one axis, so a tooltip reads
+the way the axis beside it does: `TChartView.DrawOverlay` passes `Plot.YAxis.LocaleName`,
+`Plot.YAxis.Decimals` and `Plot.YAxis.UseThousandSeparator`. `TChartHitTarget` carries sector fields for `Pie`/`Donut` hit-testing, and
 `TChartTooltip`'s private `TargetContainsPoint` has a branch for them; both are
 specified in 4.23, the section that introduces sectors, rather than here.
 
@@ -875,7 +925,10 @@ renders a highlight circle (radius 5, `Info.Color`) at the anchor and a tooltip 
 per the section 3 style: text `'<SeriesName>'` on the first line (omitted when the
 series has no name) and `'<CategoryLabel>: <formatted Value>'` on the second,
 positioned 12 px above the anchor, clamped inside the chart bounds, background white,
-border $FFCBCBCB.
+border $FFCBCBCB. The white is the constant `ChartLabelBackground`, never the style's
+`LabelBackgroundColor`: the tooltip floats over whatever ink is under the pointer, with no
+single color behind it to contrast against, so it keeps an opaque box whatever the labels
+do (4.29).
 
 Both controls (`Chart4D.VCL.pas`, `Chart4D.FMX.pas`):
 
@@ -940,8 +993,9 @@ grouping exists only to decide which points are candidates; it does not read or 
   or two points per group, deterministically.
 
 **Placement**, at the reference scale (offsets scaled by `ScaleFactor`), text formatted as
-`TAxisScale.FormatValue(Value, YAxis.UseThousandSeparator) + YAxis.LabelSuffix` (always
-appended, unlike axis break labels, since each value label stands alone):
+`TAxisScale.FormatValue(Value, YAxis.UseThousandSeparator, YAxis.Decimals) +
+YAxis.LabelSuffix` (the suffix always appended, unlike axis break labels, since each value
+label stands alone; `YAxis.Decimals` per 4.27):
 
 - `Line`, `Area`, `Scatter`/bubble, `DotPlot`: centered on the point, offset 8 px away from
   the plot in the fixed direction for the chart's orientation (up when `Vertical`, right
@@ -957,8 +1011,11 @@ appended, unlike axis break labels, since each value label stands alone):
 - `Arrow`: one label at the end (arrowhead) point only, offset 8 px further along the
   arrow's own direction, beyond the arrowhead.
 
-Every label is drawn with the same white background rectangle and 3 px padding as a
-`TextLabel` annotation (4.1), text in `AxisFontSize`/`TextColor`.
+Every label is drawn with the same background rectangle and 3 px padding as a
+`TextLabel` annotation (4.1), in the style's `LabelBackgroundColor` (opaque white by
+default, 4.29), text in `AxisFontSize`/`TextColor`. A fully transparent
+`LabelBackgroundColor` draws no rectangle, but the rectangle still counts for the overlap
+rule below.
 
 **Deterministic overlap avoidance.** Candidates across every group are generated in a
 single fixed order: outer loop over series index as stored in `Plot.Series` (or, for
@@ -971,7 +1028,7 @@ skip this candidate entirely (it is not drawn, and not shifted further); otherwi
 and add its clamped rectangle to the "already drawn" list for the rest of the pass. This is
 a first-come-first-served rule over a fixed order, so it needs no randomization or
 iteration and always yields the same result for the same input; it is also exactly the rule
-`Pie`/`Donut` reuse for segment labels (4.23), in category order. It only considers other
+`Pie`/`Donut` reuse for segment labels (4.23), over the segments largest first. It only considers other
 value labels drawn in the same pass, not pre-existing manual annotations, which are drawn
 afterward and are the caller's own responsibility to place.
 
@@ -1019,7 +1076,8 @@ A caller who wants Dutch or German output sets, for example, `Plot.YAxis.LocaleN
 'nl-NL'`, which affects axis break labels (`BuildLabels`) and, when the hosting control
 threads it through to `TChartTooltip.Draw`, the tooltip's value text too. `XAxis.LocaleName`
 and `YAxis.LocaleName` are independent; a chart may show an invariant value axis and a
-localized date axis (4.16), or vice versa.
+localized date axis (4.16), or vice versa. `LocaleName` picks the separators, `Decimals`
+(4.27) picks how many decimals follow them; the two are set and applied independently.
 
 ### 4.15 Logarithmic value axis
 
@@ -1371,10 +1429,22 @@ last point back to the first, back to `Center`.
 **Segment labels**, drawn unconditionally (not gated by `ValueLabels`, 4.12, which has no
 effect on `Pie`/`Donut`): for each wedge with a non-zero sweep angle, at the wedge's
 mid-angle (`StartAngle + SweepAngle / 2`) and `0.65 * OuterRadius` from center, text
-`Format('%s (%d%%)', [Categories[i], Round(100 * Values[i] / Total)])`, with the same
-white background box as a value label (4.12), and the exact same deterministic
-overlap-avoidance rule from 4.12 (fixed order = category order; skip a candidate whose
-clamped box intersects an already-drawn one).
+`Format('%s (%s)', [Categories[i], TAxisScale.FormatPercentage(Values[i] / Total, YAxis)])`,
+which is a whole percent unless `YAxis.Decimals` asks for decimals (4.27), or the share or
+the category alone, or no label at all, as `SegmentLabels` selects (4.29), with the same
+background box as a value label (4.12), in `LabelBackgroundColor`, and text in whichever of
+`TextColor` and white reads better over that box on its own wedge (4.29), and the exact same deterministic
+overlap-avoidance rule from 4.12 (skip a candidate whose clamped box intersects an
+already-drawn one), with its fixed order being the segments by value, largest first, and
+equal values in category order. The largest segments are the ones a reader looks for, so
+when two labels collide it is the smaller segment's that goes; a tiny segment early in the
+category list no longer pushes out the label of a much larger one after it. The tie-break
+makes the order total, so the same data always keeps the same labels. The order decides
+only which labels survive; every label still sits on its own wedge's mid-angle, and the
+wedges, legend and hit targets stay in category order. Labels are drawn in a second pass, after
+every wedge: a label drawn right after its own wedge would be painted over by the next
+one, and would still hold its place against the labels after it, so a visible label could
+be dropped for colliding with one nobody can see.
 
 **Legend.** One item per category (`BuildCategoryLegendItems`, 4.8):
 `Categories[i]`/`CategoryColor(i)` (4.7), since wedge color comes from the category
@@ -1523,7 +1593,8 @@ type
 A chart control dropped on a form has no series yet, so it would paint nothing and leave
 the developer looking at an empty rectangle. `TChartPreview.FillFrom` clears `Preview`,
 copies every single-value setting from `Settings` (kind, the three texts, style, both axes,
-orientation, stack mode, legend position and direction, value labels, donut centre text)
+orientation, stack mode, legend position and direction, value labels, segment labels,
+donut centre text)
 and fills it with sample data for the kind that was copied: an X value per Y value for
 `Scatter`, both ends of every span for `Dumbbell`, `Range` and `Arrow`, and categories with
 one series, or two for `GroupedBar` and `StackedBar`, for every other kind.
@@ -1549,6 +1620,230 @@ The design packages write their Win64x BPL to `$(BDSCOMMONDIR)\Bpl\$(Platform)`,
 the file name is the same on both. Under `RAD Studio 12.0` they target Win32 only: that
 release has no Win64x platform.
 
+### 4.27 Decimal control
+
+No dedicated type. `Chart4D.Consts` declares `AutomaticDecimals = -1` (4.2) and
+`TAxisOptions` carries `Decimals: Integer`, default `AutomaticDecimals` (4.5).
+`TAxisScale` has a `FormatValue` overload taking a `Decimals` count after
+`UseThousandSeparator`, and a second one taking it after `LocaleName`, so a caller can fix
+the decimals with or without locale formatting (4.14). The two are independent per axis.
+
+`Decimals` selects the `FormatFloat` pattern `FormatValue` builds, and nothing else about
+it changes:
+
+- `AutomaticDecimals` (any negative count): `0.##########` or `#,##0.##########`, the
+  historical pattern. Up to ten decimals, trailing zeros removed (`5.0 → '5'`).
+- `0`: `0` or `#,##0`. The value is rounded to a whole number and no decimal separator is
+  drawn (`1234.56 → '1235'`).
+- `n > 0`: `0.` followed by `n` zeros. Exactly `n` decimals, padded where the value has
+  fewer (`5.0` at 2 → `'5.00'`), rounded where it has more. Counts above 15 are treated as
+  15, since a `Double` carries no more significant digits than that and the rest would be
+  noise.
+
+`XAxis.Decimals` and `YAxis.Decimals` reach every number the library formats from a value:
+
+- Axis break labels, through `BuildLabels` (4.5), per axis.
+- Value labels, through `YAxis.Decimals` (4.12).
+- Tooltip values, through the `Decimals` parameter of `TChartTooltip.Draw`, which
+  `TChartView.DrawOverlay` fills from `Plot.YAxis.Decimals` (4.11), alongside that axis'
+  `LocaleName` and `UseThousandSeparator`, so the tooltip and the value axis format a
+  value identically.
+- The continuous-X point label in a tooltip's category line, through `XAxis.Decimals`.
+
+Percentages are the one exception, since a percentage carries its own precision rather
+than the value's. `TAxisScale.FormatPercentage(Proportion, Options)` multiplies
+`Proportion` by 100, formats it with `Options` exactly as above except that
+`AutomaticDecimals` means 0 decimals there, and appends `'%'`. It is what the
+`StackMode.Proportions` value axis (4.8) and the `Pie`/`Donut` segment labels (4.23, 4.24)
+use, so both show whole percents until `YAxis.Decimals` asks for decimals, which is the
+output they had before this setting existed.
+
+Manual `BreakLabels` still win over all of it, and a date axis ignores `Decimals` entirely
+(4.16), exactly as it ignores `UseThousandSeparator`.
+
+### 4.28 Staggered category axis labels
+
+In `Chart4D.Types.pas`:
+
+```pascal
+{$SCOPEDENUMS ON}
+type
+  TCategoryLabelLayout = (SingleRow, Staggered);
+{$SCOPEDENUMS OFF}
+```
+
+`TAxisOptions` carries `CategoryLabelLayout: TCategoryLabelLayout` (default `SingleRow`),
+declared in 4.5 and read from `XAxis`. It applies only to a discrete category axis along
+the bottom of a `Vertical` chart. Everything else ignores it:
+
+- A continuous or date X axis (4.16) spaces its breaks to fit by construction
+  (`NiceBreaks`/`DateBreaks`).
+- `Pie`/`Donut` (4.23) have no category axis at all.
+- A `Horizontal` chart stacks its category labels one per bar down the left edge, where a
+  label only collides with its neighbours once the bars are thinner than a line of text. A
+  second row there would be a second column, costing the plot a whole label width for a
+  zig-zag that reads worse than the single column it replaces; a chart with that many
+  categories is better served by more height. So a horizontal chart keeps the single-row
+  rule, and draws exactly what `SingleRow` draws.
+
+`SingleRow` is the thinning rule of 4.8 unchanged: one row, and a label that does not fit
+beside the last one kept is dropped. `Staggered` gives the axis
+`StaggeredCategoryLabelRowCount` = 2 rows, and offers each label the rows in order, so a
+label crowded out of the first row moves to the second instead of disappearing.
+
+Worked example, the ten countries the demo catalogue charts
+(`Examples\Common\Chart4DDemo.Catalog.pas`) on a 640 px axis. The band there is 55.7 px
+while the narrowest pair of neighbours needs 59.4 px, so *every* adjacent pair collides and
+`SingleRow` can only keep every other name, dropping `Belgium`, `Germany`, `Poland`,
+`Romania` and `Sweden`. Two bands apart the widest pair needs 91.8 px against 111.4
+available, so the ones it dropped all fit a second row and `Staggered` keeps all ten.
+
+The left end of that axis, drawn to scale at one character per 11 px. `SingleRow`,
+with nothing where the dropped names were:
+
+```
+Netherlands  France     Italy
+```
+
+and `Staggered`, which saves them on the row below, each still centred on its own band:
+
+```
+Netherlands  France     Italy
+       Belgium    Germany
+```
+
+`Belgium` overlaps both of its neighbours on one row, which is why it is dropped there and
+why it is the second row that has to take it.
+
+A label that fits neither row is still dropped, so `Staggered` never draws two labels on
+top of each other; it only raises how many fit. The walk is the one in 4.8, over rows
+rather than over a single row, so with one row it selects exactly the indices it always
+did and `SingleRow` output is untouched.
+
+Rows are numbered from the plot area outward, stacking downward below the plot, and step
+by `TChartRenderJob.CategoryLabelRowPitch`: a line of `AxisTextStyle` text plus
+`StaggeredCategoryLabelGapAtReferenceScale` = 2 px at the reference scale.
+
+The room for the extra row comes out of the plot area: `ComputeBottomAxisLabelHeight` adds
+one `CategoryLabelRowPitch`. It is reserved whenever `Staggered` applies,
+whether or not any label actually reaches the second row, so the plot area does not
+grow and shrink by a line of text as the data or the window size changes; a caller who
+wants the line back leaves the axis at `SingleRow`.
+
+### 4.29 Segment label options
+
+In `Chart4D.Types.pas`:
+
+```pascal
+{$SCOPEDENUMS ON}
+type
+  TSegmentLabelMode = (CategoryAndPercentage, Percentage, Category, None);
+{$SCOPEDENUMS OFF}
+```
+
+`TChartPlot` carries `SegmentLabels: TSegmentLabelMode`, default `CategoryAndPercentage`
+(4.7), which picks what each `Pie`/`Donut` segment label (4.23) shows:
+
+- `CategoryAndPercentage`: `'Fossil (70%)'`, the only form before this setting existed.
+- `Percentage`: `'70%'`, for a chart whose legend already names the categories, where the
+  name in every label only repeats it.
+- `Category`: `'Fossil'`.
+- `None`: no segment labels at all. The wedges still get their hit targets, anchored where
+  the label would have been, so hover and tooltips work as before.
+
+The default is listed first so that a zeroed field already means it. The percentage follows
+`YAxis.Decimals` in every mode that shows one (4.27). Whatever the mode, a label is placed
+and dropped by the rule of 4.23: after every wedge, largest segment first, skipping one
+that collides with a label already drawn, so a shorter label only lets more of them fit.
+Other chart kinds ignore the setting.
+
+**Label background.** `TChartStyle` carries `LabelBackgroundColor: TAlphaColor`, default
+`ChartLabelBackground` (opaque white), the box behind a label. It is a style property of
+its own rather than `BackgroundColor`, so repainting the chart background never makes
+labels transparent by accident. `TChartLabelPlacer` fills each label box with it; when its
+alpha is 0, such as `TAlphaColors.Null`, no box is drawn, but the box still counts for the
+overlap rule, so labels go on avoiding each other with nothing drawn between them. An
+alpha between 0 and 255 lets the ink behind show through.
+
+Decision: **value labels (4.12), `TextLabel` annotations (4.1) and segment labels all
+follow `LabelBackgroundColor`; the tooltip does not.** The first three are one convention,
+with one implementation in `TChartLabelPlacer`, and giving one of them a background of its
+own would split that rule in two. The tooltip is a different kind of thing: an overlay with
+a border, drawn over whatever ink is under the pointer, so it has no single color behind it
+to contrast with, and a transparent tooltip would be unreadable. It keeps
+`ChartLabelBackground` (4.11).
+
+**Text color.** A segment label sits on its own wedge, so what is behind its text is known:
+`TChartColors.Blend(LabelBackgroundColor, CategoryColor(i))`. Its text color is
+`TChartColors.ReadableTextColor(TextColor, Behind, MinimumTextContrast)`: the style's
+`TextColor` as long as its WCAG contrast ratio against `Behind` reaches
+`MinimumTextContrast`, and below that whichever of `TextColor` and white reads better. With
+the default opaque white box, `Behind` is white, so every label keeps `TextColor` exactly
+as before; with no box, the text contrasts with the wedge itself. A label clamped partly off
+its wedge is still judged against its own wedge. Value labels and annotations keep
+`TextColor` whatever the background, since 4.12 already places value labels off the ink
+and an annotation has its own color.
+
+**Minimum text contrast.** `TChartStyle` carries `MinimumTextContrast: Double`, default
+4.5, the WCAG AA minimum for normal text. It lets a chart keep one text color, or switch
+only where that color would really be unreadable, rather than wherever white happens to
+read better. On the palette with the default dark text (luminance about 0.016) and no box:
+
+- 1 never switches, one text color throughout. A zeroed record's 0 does the same, so a
+  `TChartStyle` built without `Default` never switches; that is acceptable, but it is why a
+  style should start from `TChartStyle.Default` or `Plot.Style`.
+- 3, the WCAG minimum for large text, keeps the dark text on blue and green (about 3.5 to 1
+  there, against about 4.5 for white) and turns only dark red and darker wedges white.
+- 4.5, the default, turns blue, green and dark red white and keeps orange dark.
+
+The default changes nothing for the default text color. Keeping `TextColor` at the minimum
+can only differ from taking the more legible of the two where `TextColor` reaches the
+minimum while white reads better still, and that needs one of two things. Either both
+`TextColor` and white reach the minimum `T` on a background lighter than the text, which is
+possible only when the text's luminance is below `1.05 / T² - 0.05`; or `TextColor` reaches
+`T` on a background darker than itself, where white always reads better, which is possible
+only when its luminance is at least `0.05 * T - 0.05`. At 4.5 that makes the default exactly
+the "more legible" rule for any `TextColor` of luminance from about 0.0019 up to, but not
+including, 0.175: the greys from `#070707` to `#747474`, which includes the default
+`#222222`. Outside that band the default can keep the text color on a narrow band of
+backgrounds where white would have read slightly better: pure black text on greys around
+`#757575`, where black and white both reach about 4.6 to 1, and a light text color such as
+`#767676` on black. `MaximumContrastRatio` restores the plain "more legible" rule for any
+text color.
+
+### 4.30 Palette
+
+`TChartStyle` carries `Palette: TArray<TAlphaColor>` (4.3), default empty. Palette color
+`Index` is `Palette[Index mod Length(Palette)]` when `Palette` is non-empty and
+`DefaultPalette[Index mod Length(DefaultPalette)]` when it is empty, so a chart keeps the
+six editorial colors until a caller supplies more. `TChartPlot.SeriesColor` uses it for a
+series without its own `Color`, and `TChartPlot.CategoryColor` for every category (4.7);
+`HighlightedSeriesIndex` still mutes every other series to `ChartLightGrey` (4.13).
+`DefaultPalette` itself is unchanged: picking more or different colors is the caller's
+choice, and the six stay the editorial default.
+
+Everything that takes its color from those two functions follows the palette with them:
+bars, lines, points and wedges, the legend swatches, the color a hover target reports
+(4.11), and the wedge color a segment label's text contrast is judged against (4.29).
+
+A caller sets it through the property copy, like every style field:
+
+```pascal
+var Style := Plot.Style;
+Style.Palette := [ChartBlue, ChartOrange, ChartDarkRed, ChartGreen, ...];
+Plot.Style := Style;
+```
+
+The plot keeps its own copy of the array: `TChartPlot.Style` stores a copy of `Palette` when
+it is written and returns a copy when it is read. A dynamic array in a record is shared by
+reference, so without those copies a write to an element of any copy of the style, or to
+the array a caller passed in, would recolor the chart in place without `OnChanged`, and so
+without the chart repainting. Assigning the style back is the only way to change the
+colors.
+
+Empty is also what a zeroed `TChartStyle` holds, so a style built without `Default` still
+gets `DefaultPalette`.
+
 ## 5. Tests (Tests\, DUnitX)
 
 Console project `Chart4D.Tests.dpr` + `build.bat` (dcc32; the RAD Studio location is
@@ -1568,8 +1863,23 @@ read from the `BDS` environment variable, defaulting to
   polyline per series + gridlines; a bar chart produces one FillRect per category; a
   stacked proportions chart maps the top of each stack to the same pixel; legend drawn
   only when more than one named series; footer separator/source drawn only when Source
-  is set; mismatched category/value lengths raise `EChart4DException`.
-- `Chart4D.Style.Tests.pas`: `TChartStyle.Default` values per section 3.
+  is set; mismatched category/value lengths raise `EChart4DException`; a value axis at a
+  fixed decimal count labels every break with it, and `YAxis.Decimals` reaches the
+  proportions axis and the pie segment percentages while the default leaves both at whole
+  percents (4.27); a `TextLabel` annotation's box takes the style's `LabelBackgroundColor`
+  (4.29); a custom `Palette` colors a pie's wedges, their legend swatches and the colors their
+  hover targets report, and every bar of each series of a grouped bar, with no
+  `DefaultPalette` color left (4.30).
+- `Chart4D.Style.Tests.pas`: `TChartStyle.Default` values per section 3, `LabelBackgroundColor`
+  and an empty `Palette` among them; and `TChartColors` (4.3): an opaque color blends to itself and a transparent
+  one to what is under it, half-transparent white over black is mid grey, black against
+  white contrasts 21 to 1 either way round, and `ReadableTextColor` gives white on dark red
+  and keeps the dark text on orange; with a minimum text contrast, 1 never switches on any
+  palette color or black, 3 keeps the dark text on blue and green but not on dark red, and
+  4.5 turns blue and green white; the default minimum `MinimumTextContrast` is 4.5, and for
+  the default dark text it matches the plain "more legible" rule on every grey and on an
+  RGB grid in steps of 15; and the two limits of that band are pinned, black text keeping
+  black on `#757575` and `#767676` text keeping itself on black, where white reads better.
 - `Chart4D.Invariants.Tests.pas`: boundary and ink invariants for `TChartRenderer`,
   reasoning geometrically over a `TRecordingCanvas` for every chart kind: no recorded
   call may draw outside the bitmap, none may land inside the outer margin (other than
@@ -1580,12 +1890,16 @@ read from the `BDS` environment variable, defaulting to
   target within its radius and returns False outside every target; `Draw` produces a
   FillRect (box), a FillCircle (highlight) and text calls on a recording canvas; the
   tooltip box stays inside the chart bounds for anchors near every edge; the
-  `LocaleName` overload of `Draw` formats `Info.Value` with that locale (4.14); a
+  `LocaleName` overload of `Draw` formats `Info.Value` with that locale (4.14), its
+  `Decimals` parameter fixes that value's decimals and its `UseThousandSeparator`
+  parameter groups that value's digits while the default leaves it ungrouped (4.27); the
+  tooltip box stays `ChartLabelBackground` even under a style whose `LabelBackgroundColor`
+  is transparent (4.29); a
   sector target (4.23) is found by `FindTarget` when the point falls between its inner
   and outer radius and within its angular span, including a case straddling the 0/360
   wraparound, and misses when outside either bound.
 - `Chart4D.Preview.Tests.pas`: `TChartPreview.FillFrom` (4.26) carries the text and layout
-  settings over, gives a scatter series its X values and a range series its end values,
+  settings over, `SegmentLabels` among them (4.29), gives a scatter series its X values and a range series its end values,
   adds a second series for `GroupedBar`, and refilling replaces the sample instead of
   adding to it.
 - `Chart4D.View.Tests.pas`: against a `TRecordingCanvas`, `TChartView.Render` (4.25) draws on
@@ -1596,7 +1910,9 @@ read from the `BDS` environment variable, defaulting to
   when moving within that point, before the first render, or with `ShowTooltips` off;
   `MouseLeave` fires a miss and a repaint request only when something was hovered;
   `DrawOverlay` draws nothing when nothing is hovered or `ShowTooltips` is off, and the
-  highlight, box and series name when a point is hovered; destroying the view clears
+  highlight, box and series name when a point is hovered, and formats that value with the
+  value axis' `Decimals` and `UseThousandSeparator` rather than its own defaults (4.27);
+  destroying the view clears
   `Plot.OnChanged`, but leaves a handler assigned after the view alone.
 - `Chart4D.Axis.Tests.pas` also covers: the `LocaleName` overload of `FormatValue` against at
   least one non-invariant locale, and that the 2-argument overload's output is unchanged
@@ -1604,12 +1920,20 @@ read from the `BDS` environment variable, defaulting to
   [1, 10, 100, 1000, 10000]` snapped to bounding powers) and its guard exception for
   `MinValue <= 0` (4.15); `ResolveDateMode` at each threshold boundary and `DateBreaks`/
   `FormatDateValue` for one fixture span per mode (`Day`, `Month`, `Quarter`, `Year`)
-  (4.16).
+  (4.16); the `Decimals` overloads of `FormatValue` (padding, zero decimals, thousand
+  separator, the 15-decimal cap, the locale overload) and that `AutomaticDecimals` matches
+  the 2-argument overload, `BuildLabels` at a fixed decimal count, and `FormatPercentage`
+  at its automatic whole percent, at one decimal and through a locale (4.27).
 - `Chart4D.Plot.Tests.pas` also covers: `SeriesColor` returns `ChartLightGrey` for every
   index except `HighlightedSeriesIndex`, and is unchanged at `-1` (4.13); `AddRangeSeries`/
   `AddArrowSeries` set `Kind`/`Orientation`/`Values`/`EndValues` like `AddDumbbellSeries`;
   `AddRangeBandSeries` appends (does not clear) and sets `IsRangeBand`; `CategoryColor`
-  cycles the palette by category index (4.7).
+  cycles the palette by category index (4.7); `SegmentLabels` defaults to
+  `CategoryAndPercentage` and setting it fires `OnChanged` (4.29); and for `Palette` (4.30),
+  an empty one gives `DefaultPalette` over two full cycles, a custom one colors categories in
+  its own order and wraps by its own length, colors a series without its own color while a
+  series' own color still wins and the highlight still mutes the others, and neither a write
+  to an element of a style copy nor to the array the plot was given changes the plot's colors.
 - `Chart4D.Renderer.Tests.pas` also covers, each against a `TRecordingCanvas`: a logarithmic
   axis renders breaks at powers of the base and raises `EChart4DException` for a
   non-positive value (4.15); a date axis with `DateMode = Auto` picks the expected
@@ -1635,7 +1959,40 @@ read from the `BDS` environment variable, defaulting to
   expected candidate set per chart kind and group (4.12), including the tie-break rule for
   `Extremes`; two labels whose clamped boxes would intersect are drawn in the fixed
   series-then-index order, with only the first one actually drawn; a label placement per
-  kind (`Line`, `Bar`, `Dumbbell`, `Arrow`) matches the offsets specified in 4.12.
+  kind (`Line`, `Bar`, `Dumbbell`, `Arrow`) matches the offsets specified in 4.12; and
+  `YAxis.Decimals` reaches the label text (4.27); and the style's `LabelBackgroundColor`
+  fills every value label box in place of the white one (4.29).
+
+- `Chart4D.CategoryLabels.Tests.pas`: the category axis label layout of 4.28, against a
+  `TRecordingCanvas` with labels of a known measured width so the expected row of each one
+  follows from the band arithmetic. `SingleRow` drops the labels that do not fit and keeps
+  the rest on one row; `Staggered` on the same data draws all of them across exactly two
+  rows, one text line apart, and leaves labels that all fit on the first row alone;
+  a band too narrow for either row drops labels again, but fewer than `SingleRow` does;
+  on the worked ten-country example of 4.28, `SingleRow` keeps exactly the five names that
+  section names and drops the other five, while `Staggered` labels all ten and alternates
+  their rows, each second-row label still centred on its own band, exactly midway between
+  the first-row labels either side of it; the
+  second row stays inside the chart and is paid for by a shorter plot area; a horizontal
+  chart crowded enough to drop labels draws exactly the same calls under `Staggered` as
+  under `SingleRow`; and a continuous X axis ignores the setting.
+
+- `Chart4D.SegmentLabels.Tests.pas`: the `Pie`/`Donut` segment labels of 4.23, against a
+  `TRecordingCanvas`. In the recorded call order every segment label of a pie and of a
+  donut comes after the last wedge, so no wedge can be drawn over a label. On a pie whose
+  1% and 8% segments sit side by side ahead of a 91% one, the 8% label is kept and the
+  colliding 1% label is the one dropped; of two equal, colliding segments the earlier
+  category keeps its label. On a pie of three equal segments with no legend, each
+  `SegmentLabels` mode of 4.29 draws exactly its own text: `'A (33%)'`, `'33%'` alone or
+  `'A'` alone, and `None` draws no text and no label box while the hit map still holds all
+  three segments. By default every label sits on a white box in the dark text color; a custom
+  opaque `LabelBackgroundColor` replaces the white box; a transparent one draws the text with
+  no box at all, turns it white on the blue and dark red wedges and keeps it dark on the
+  orange one, and still drops the colliding 1% label. With no box, a `MinimumTextContrast` of
+  3 keeps the dark text on the blue wedge and turns only the dark red one white, and 1 keeps
+  the dark text on every wedge. With a custom `Palette` of pale yellow, navy and pale cyan
+  the contrast is judged against those wedges, dark, white and dark, the other way round from
+  the default palette (4.30).
 
 - `Chart4D.Catalog.Tests.pas`: for the shared demo catalogue
   (`Examples\Common\Chart4DDemo.Catalog.pas`, 7), the numbers and names parsed back out of

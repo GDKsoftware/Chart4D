@@ -20,6 +20,7 @@ interface
 uses
   System.Types,
   Chart4D.Canvas.Interfaces,
+  Chart4D.Consts,
   Chart4D.Style,
   Chart4D.Types;
 
@@ -35,7 +36,9 @@ type
     class function NormalizeAngleDegrees(const Angle: Single): Single; static;
     class function SectorContainsAngle(const PointAngle, StartAngle, SweepAngle: Single): Boolean; static;
 
-    class function BuildLines(const Info: TChartHitInfo; const LocaleName: string): TArray<string>; static;
+    class function BuildLines(const Info: TChartHitInfo; const LocaleName: string;
+                              const Decimals: Integer;
+                              const UseThousandSeparator: Boolean): TArray<string>; static;
     class function MeasureLinesWidth(const Canvas: IChartCanvas; const Lines: TArray<string>;
                                      const TextStyle: TChartTextStyle): Single; static;
     class function ComputeBoxBounds(const Info: TChartHitInfo; const BoxWidth, BoxHeight: Single;
@@ -59,11 +62,17 @@ type
     /// the series name and category/value text, clamped inside
     /// <c>[0, Width] x [0, Height]</c>. <c>LocaleName</c>, when non-empty, formats
     /// <c>Info.Value</c> with that locale instead of the invariant convention.
+    /// <c>Decimals</c> fixes how many decimals that value is shown with, and defaults to
+    /// <c>AutomaticDecimals</c>. <c>UseThousandSeparator</c> groups its digits, and
+    /// defaults to <c>False</c>. The three together are the value axis' own formatting,
+    /// and callers pass that axis' settings so a tooltip reads the way its axis does.
     /// </summary>
     class procedure Draw(const Canvas: IChartCanvas; const Style: TChartStyle;
                          const Info: TChartHitInfo;
                          const Width, Height: Single;
-                         const LocaleName: string = ''); static;
+                         const LocaleName: string = '';
+                         const Decimals: Integer = AutomaticDecimals;
+                         const UseThousandSeparator: Boolean = False); static;
   end;
 
 implementation
@@ -72,8 +81,7 @@ uses
   System.Math,
   System.SysUtils,
   System.UITypes,
-  Chart4D.Axis,
-  Chart4D.Consts;
+  Chart4D.Axis;
 
 class function TChartTooltip.NormalizeAngleDegrees(const Angle: Single): Single;
 begin
@@ -149,13 +157,15 @@ end;
 class procedure TChartTooltip.Draw(const Canvas: IChartCanvas; const Style: TChartStyle;
                                    const Info: TChartHitInfo;
                                    const Width, Height: Single;
-                                   const LocaleName: string = '');
+                                   const LocaleName: string = '';
+                                   const Decimals: Integer = AutomaticDecimals;
+                                   const UseThousandSeparator: Boolean = False);
 begin
   const HighlightRadius = 5 * Style.ScaleFactor;
   Canvas.FillCircle(Info.AnchorX, Info.AnchorY, HighlightRadius, Info.Color);
 
   const TextStyle = TChartTextStyle.Create(Style.FontName, Style.CaptionFontSize, False, Style.TextColor);
-  const Lines = BuildLines(Info, LocaleName);
+  const Lines = BuildLines(Info, LocaleName, Decimals, UseThousandSeparator);
   const Padding = 8 * Style.ScaleFactor;
   const LineHeight = Canvas.MeasureText(LineHeightSampleText, TextStyle).Height;
 
@@ -167,13 +177,15 @@ begin
   DrawLines(Canvas, Lines, TextStyle, Bounds, Padding, LineHeight);
 end;
 
-class function TChartTooltip.BuildLines(const Info: TChartHitInfo; const LocaleName: string): TArray<string>;
+class function TChartTooltip.BuildLines(const Info: TChartHitInfo; const LocaleName: string;
+                                        const Decimals: Integer;
+                                        const UseThousandSeparator: Boolean): TArray<string>;
 begin
   var FormattedValue: string;
   if LocaleName <> '' then
-    FormattedValue := TAxisScale.FormatValue(Info.Value, False, LocaleName)
+    FormattedValue := TAxisScale.FormatValue(Info.Value, UseThousandSeparator, LocaleName, Decimals)
   else
-    FormattedValue := TAxisScale.FormatValue(Info.Value, False);
+    FormattedValue := TAxisScale.FormatValue(Info.Value, UseThousandSeparator, Decimals);
 
   const ValueLine = Format('%s: %s', [Info.CategoryLabel, FormattedValue]);
 

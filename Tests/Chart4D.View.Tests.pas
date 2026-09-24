@@ -106,6 +106,9 @@ type
     procedure DrawOverlay_DataPointHovered_DrawsTooltip;
 
     [Test]
+    procedure DrawOverlay_ValueAxisFormatting_TooltipReadsTheWayTheAxisDoes;
+
+    [Test]
     procedure Destroy_ReleasesPlotOnChanged;
 
     [Test]
@@ -348,6 +351,28 @@ begin
   Assert.IsTrue(Canvas.HasTextEqualTo('2020'), 'The tooltip must name the hovered series');
   Assert.AreEqual(0, Canvas.CountOfKind(TCanvasCallKind.FillBackground),
     'The overlay must draw on top of the render, never the chart itself');
+end;
+
+procedure TChartViewTests.DrawOverlay_ValueAxisFormatting_TooltipReadsTheWayTheAxisDoes;
+begin
+  { A tooltip that formats its value differently from the axis right next to it reads as a
+    different number, so the view must hand the tooltip the value axis' own settings. }
+  FPlot.ClearSeries;
+  FPlot.AddSeries('2020', [40000, 30000, 20000]);
+
+  var AxisOptions := FPlot.YAxis;
+  AxisOptions.UseThousandSeparator := True;
+  AxisOptions.Decimals := 1;
+  FPlot.YAxis := AxisOptions;
+
+  HoverFirstBar;
+  const Canvas = TRecordingCanvas.Create;
+  const CanvasReference: IChartCanvas = Canvas;
+
+  FView.DrawOverlay(CanvasReference, ViewWidth, ViewHeight);
+
+  Assert.IsTrue(Canvas.HasTextEqualTo('Netherlands: 40,000.0'),
+    'The tooltip must group and round its value exactly as the value axis does');
 end;
 
 procedure TChartViewTests.Destroy_ReleasesPlotOnChanged;

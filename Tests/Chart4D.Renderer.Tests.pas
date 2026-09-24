@@ -56,6 +56,18 @@ type
     procedure Render_StackedBarProportions_MapsTopOfEveryStackToSamePixel;
 
     [Test]
+    procedure Render_StackedBarProportionsWithDefaultDecimals_LabelsAxisInWholePercent;
+
+    [Test]
+    procedure Render_StackedBarProportionsWithOneDecimal_LabelsAxisWithThatDecimal;
+
+    [Test]
+    procedure Render_PieChartWithOneDecimal_LabelsSegmentPercentageWithThatDecimal;
+
+    [Test]
+    procedure Render_ValueAxisWithDecimals_LabelsEveryBreakWithThatManyDecimals;
+
+    [Test]
     procedure Render_StackedBarMixedSignValues_StacksPositiveAndNegativeSegmentsFromBaseline;
 
     [Test]
@@ -150,6 +162,15 @@ type
 
     [Test]
     procedure Render_PieChartTextAnnotation_DrawsAtCategoryIndexAndPlotHeightFraction;
+
+    [Test]
+    procedure Render_TextAnnotation_UsesTheStyleLabelBackgroundColor;
+
+    [Test]
+    procedure Render_PieChartWithCustomPalette_ColorsWedgesLegendAndHoverFromIt;
+
+    [Test]
+    procedure Render_GroupedBarWithCustomPalette_ColorsEachSeriesFromIt;
 
     [Test]
     procedure Render_DonutChartTextAnnotation_DrawsAtCategoryIndexAndPlotHeightFraction;
@@ -368,6 +389,92 @@ begin
     begin
       Assert.AreEqual(TopPerCategory[0], TopPerCategory[Index], 0.01);
     end;
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_StackedBarProportionsWithDefaultDecimals_LabelsAxisInWholePercent;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.StackedBar;
+    Plot.StackMode := TStackMode.Proportions;
+    Plot.Categories := ['2020', '2021'];
+    Plot.AddSeries('North', [4, 5]);
+    Plot.AddSeries('South', [3, 4]);
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('25%'));
+    Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('100%'));
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_StackedBarProportionsWithOneDecimal_LabelsAxisWithThatDecimal;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.StackedBar;
+    Plot.StackMode := TStackMode.Proportions;
+    Plot.Categories := ['2020', '2021'];
+    Plot.AddSeries('North', [4, 5]);
+    Plot.AddSeries('South', [3, 4]);
+
+    var AxisOptions := Plot.YAxis;
+    AxisOptions.Decimals := 1;
+    Plot.YAxis := AxisOptions;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('25.0%'));
+    Assert.IsFalse(FRecordingCanvas.HasTextEqualTo('25%'));
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_PieChartWithOneDecimal_LabelsSegmentPercentageWithThatDecimal;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Pie;
+    Plot.Categories := ['A', 'B', 'C'];
+    Plot.AddSeries('Only', [1, 1, 1]);
+
+    var AxisOptions := Plot.YAxis;
+    AxisOptions.Decimals := 1;
+    Plot.YAxis := AxisOptions;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    { A third of the circle is the case a whole percent cannot show, so it separates the
+      decimals setting from the rounding the default does. }
+    Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('A (33.3%)'));
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_ValueAxisWithDecimals_LabelsEveryBreakWithThatManyDecimals;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Categories := ['A', 'B', 'C'];
+    Plot.AddSeries('Only', [0, 0.5, 1]);
+
+    var AxisOptions := Plot.YAxis;
+    AxisOptions.Breaks := [0, 0.5, 1];
+    AxisOptions.Decimals := 2;
+    Plot.YAxis := AxisOptions;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('0.00'));
+    Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('0.50'));
+    Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('1.00'));
   finally
     Plot.Free;
   end;
@@ -1199,6 +1306,92 @@ begin
     end;
 
     Assert.IsTrue(FoundAtCenter, 'DonutCenterText must be drawn at the computed center');
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_PieChartWithCustomPalette_ColorsWedgesLegendAndHoverFromIt;
+begin
+  { Everything that follows a category's color follows the palette with it: the wedge,
+    its legend swatch and the color its hover target reports. }
+  const Palette: TArray<TAlphaColor> = [TAlphaColor($FFC0392B), TAlphaColor($FF16A085), TAlphaColor($FF8E44AD)];
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Pie;
+    Plot.Categories := ['A', 'B', 'C'];
+    Plot.AddSeries('Share', [10, 20, 30]);
+
+    var Style := Plot.Style;
+    Style.Palette := Palette;
+    Plot.Style := Style;
+
+    var HitMap: TArray<TChartHitTarget>;
+    TChartRenderer.Render(Plot, FCanvas, 640, 450, HitMap);
+
+    const Wedges = FRecordingCanvas.CallsOfKind(TCanvasCallKind.FillPolygon);
+    Assert.AreEqual(3, Length(Wedges) + 0);
+    for var Index := 0 to High(Palette) do
+    begin
+      Assert.AreEqual<TAlphaColor>(Palette[Index], Wedges[Index].Color,
+        Format('Wedge %d must take palette color %d', [Index, Index]));
+      Assert.AreEqual(1, FRecordingCanvas.CountOfColor(TCanvasCallKind.FillRect, Palette[Index]),
+        Format('The legend swatch of category %d must take palette color %d', [Index, Index]));
+      Assert.AreEqual<TAlphaColor>(Palette[Index], HitMap[Index].Info.Color,
+        Format('Hovering category %d must report palette color %d', [Index, Index]));
+    end;
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_GroupedBarWithCustomPalette_ColorsEachSeriesFromIt;
+begin
+  const Palette: TArray<TAlphaColor> = [TAlphaColor($FFC0392B), TAlphaColor($FF16A085)];
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.GroupedBar;
+    Plot.LegendPosition := TLegendPosition.None;
+    Plot.Categories := ['A', 'B'];
+    Plot.AddSeries('First', [10, 20]);
+    Plot.AddSeries('Second', [15, 25]);
+
+    var Style := Plot.Style;
+    Style.Palette := Palette;
+    Plot.Style := Style;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    Assert.AreEqual(2, FRecordingCanvas.CountOfColor(TCanvasCallKind.FillRect, Palette[0]),
+      'Both bars of the first series take the first palette color');
+    Assert.AreEqual(2, FRecordingCanvas.CountOfColor(TCanvasCallKind.FillRect, Palette[1]),
+      'Both bars of the second series take the second palette color');
+    Assert.AreEqual(0, FRecordingCanvas.CountOfColor(TCanvasCallKind.FillRect, DefaultPalette[0]),
+      'No bar may keep a DefaultPalette color');
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_TextAnnotation_UsesTheStyleLabelBackgroundColor;
+begin
+  const Cream = TAlphaColor($FFFFF3C4);
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Bar;
+    Plot.Categories := ['A', 'B'];
+    Plot.AddSeries('Only', [10, 20]);
+    Plot.AddTextAnnotation(0, 15, 'Callout', ChartTextDark, TTextAlignH.Center);
+
+    var Style := Plot.Style;
+    Style.LabelBackgroundColor := Cream;
+    Plot.Style := Style;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    Assert.AreEqual(1, FRecordingCanvas.CountOfColor(TCanvasCallKind.FillRect, Cream),
+      'A text annotation shares the label-box convention, so it takes the style''s box color');
+    Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('Callout'));
   finally
     Plot.Free;
   end;

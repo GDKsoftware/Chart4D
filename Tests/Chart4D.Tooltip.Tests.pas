@@ -78,6 +78,18 @@ type
     procedure Draw_DutchLocale_FormatsValueWithLocaleDecimalSeparator;
 
     [Test]
+    procedure Draw_TwoDecimals_FormatsValueWithTrailingZeros;
+
+    [Test]
+    procedure Draw_StyleWithTransparentLabelBackground_KeepsTheWhiteTooltipBox;
+
+    [Test]
+    procedure Draw_ThousandSeparator_GroupsTheValueDigits;
+
+    [Test]
+    procedure Draw_DefaultFormatting_LeavesTheValueUngrouped;
+
+    [Test]
     procedure Draw_AnchorAtTopLeftCorner_BoxStaysInsideChartBounds;
 
     [Test]
@@ -106,6 +118,7 @@ implementation
 
 uses
   System.Math,
+  Chart4D.Consts,
   Chart4D.Plot,
   Chart4D.Renderer,
   Chart4D.Style,
@@ -269,6 +282,47 @@ begin
   TChartTooltip.Draw(FCanvas, TChartStyle.Default, Info, 640, 450, 'nl-NL');
 
   Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('1992: 77,4'));
+end;
+
+procedure TChartTooltipTests.Draw_TwoDecimals_FormatsValueWithTrailingZeros;
+begin
+  const Info = BuildInfo('Netherlands', '1992', 77.4, 320, 225, ChartBlue);
+
+  TChartTooltip.Draw(FCanvas, TChartStyle.Default, Info, 640, 450, '', 2);
+
+  Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('1992: 77.40'));
+end;
+
+procedure TChartTooltipTests.Draw_StyleWithTransparentLabelBackground_KeepsTheWhiteTooltipBox;
+begin
+  { The tooltip floats over whatever ink is under the pointer, with no one color to
+    contrast against, so it keeps its opaque box whatever the labels do (SPEC.md 4.29). }
+  const Info = BuildInfo('Netherlands', '1992', 77.4, 320, 225, ChartBlue);
+  var Style := TChartStyle.Default;
+  Style.LabelBackgroundColor := TAlphaColors.Null;
+
+  TChartTooltip.Draw(FCanvas, Style, Info, 640, 450);
+
+  Assert.AreEqual(1, FRecordingCanvas.CountOfColor(TCanvasCallKind.FillRect, ChartLabelBackground),
+    'The tooltip box must stay opaque white');
+end;
+
+procedure TChartTooltipTests.Draw_ThousandSeparator_GroupsTheValueDigits;
+begin
+  const Info = BuildInfo('Netherlands', '1992', 40000, 320, 225, ChartBlue);
+
+  TChartTooltip.Draw(FCanvas, TChartStyle.Default, Info, 640, 450, '', AutomaticDecimals, True);
+
+  Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('1992: 40,000'));
+end;
+
+procedure TChartTooltipTests.Draw_DefaultFormatting_LeavesTheValueUngrouped;
+begin
+  const Info = BuildInfo('Netherlands', '1992', 40000, 320, 225, ChartBlue);
+
+  TChartTooltip.Draw(FCanvas, TChartStyle.Default, Info, 640, 450);
+
+  Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('1992: 40000'));
 end;
 
 procedure TChartTooltipTests.Draw_AnchorAtTopLeftCorner_BoxStaysInsideChartBounds;

@@ -62,6 +62,8 @@ type
 implementation
 
 uses
+  System.Generics.Collections,
+  System.Generics.Defaults,
   System.Math,
   System.SysUtils,
   System.TypInfo,
@@ -88,6 +90,20 @@ const
   /// orientation. Shared by every value-label placement rule (see SPEC.md 4.12).
   /// </summary>
   ValueLabelOffsetAtReferenceScale = 8;
+
+  /// <summary>
+  /// The clear space, in pixels at the reference scale, between the two rows of a
+  /// staggered category axis, so the second row reads as its own line rather than as a
+  /// descender of the first.
+  /// </summary>
+  StaggeredCategoryLabelGapAtReferenceScale = 2;
+
+  /// <summary>
+  /// How many rows a staggered category axis lays its labels out on. Two is the whole
+  /// point of the layout: a label that fits neither row is dropped, exactly as
+  /// <c>SingleRow</c> drops one that does not fit its only row.
+  /// </summary>
+  StaggeredCategoryLabelRowCount = 2;
 
 type
   /// <summary>
@@ -123,21 +139,64 @@ type
   end;
 
   /// <summary>
-  /// Draws labels that sit on top of chart ink, each on its own <c>ChartLabelBackground</c>
-  /// box: it sizes the box around the measured text, shifts it back inside the clamp
-  /// bounds when it would stick out, and remembers where every box landed so a later label
-  /// can be dropped rather than drawn over an earlier one.
+  /// A category axis label that survived the fit walk: which category it labels, and
+  /// which row of the axis it landed on. <c>Row</c> is always 0 for a
+  /// <c>SingleRow</c> layout, and 0 or 1 for a <c>Staggered</c> one, counting away from
+  /// the plot area.
+  /// </summary>
+  TCategoryLabelPlacement = record
+    Index: Integer;
+    Row: Integer;
+    class function Create(const Index, Row: Integer): TCategoryLabelPlacement; static;
+  end;
+
+  /// <summary>
+  /// The circle a <c>Pie</c> or <c>Donut</c> is drawn in, and the total its segments share
+  /// out: everything a wedge or its label needs besides the wedge's own angles.
+  /// </summary>
+  TPieFrame = record
+    Center: TPointF;
+    InnerRadius: Single;
+    OuterRadius: Single;
+    IsDonut: Boolean;
+    Total: Double;
+  end;
+
+  /// <summary>
+  /// One segment of a <c>Pie</c> or <c>Donut</c> with a non-zero sweep: the category it
+  /// stands for, where it starts and how far it sweeps, clockwise from 12 o'clock at -90
+  /// degrees, and its value. Built once per render, so the wedges and their labels can be
+  /// drawn in separate passes.
+  /// </summary>
+  TPieWedge = record
+    CategoryIndex: Integer;
+    StartAngle: Single;
+    SweepAngle: Single;
+    Value: Double;
+    class function Create(const CategoryIndex: Integer; const StartAngle, SweepAngle: Single;
+                          const Value: Double): TPieWedge; static;
+    /// <summary>The angle halfway through the sweep, which a segment label is centred on.</summary>
+    function MidAngle: Single;
+  end;
+
+  /// <summary>
+  /// Draws labels that sit on top of chart ink, each on its own box in the style's
+  /// <c>LabelBackgroundColor</c>: it sizes the box around the measured text, shifts it back
+  /// inside the clamp bounds when it would stick out, and remembers where every box landed
+  /// so a later label can be dropped rather than drawn over an earlier one. A fully
+  /// transparent background draws no box, but the box still counts as taken.
   /// </summary>
   /// <remarks>
-  /// The single implementation of the white-box label convention (see SPEC.md 4.12),
-  /// shared by value labels, <c>TextLabel</c> annotations and pie/donut segment labels.
-  /// One instance covers one group of labels that compete for space; two groups drawn in
-  /// separate passes each get their own instance and so never crowd each other out.
+  /// The single implementation of the label-box convention (see SPEC.md 4.12), shared by
+  /// value labels, <c>TextLabel</c> annotations and pie/donut segment labels. One instance
+  /// covers one group of labels that compete for space; two groups drawn in separate
+  /// passes each get their own instance and so never crowd each other out.
   /// </remarks>
   TChartLabelPlacer = class
   private
     FCanvas: IChartCanvas;
     FScaleFactor: Single;
+    FBackgroundColor: TAlphaColor;
     FClampBounds: TRectF;
     FPlacedBoxes: TArray<TRectF>;
 
@@ -150,10 +209,11 @@ type
                     const SkipWhenOverlapping: Boolean);
   public
     /// <summary>
-    /// Creates a placer that draws on <c>Canvas</c> and keeps every label box inside
+    /// Creates a placer that draws on <c>Canvas</c> at <c>Style.ScaleFactor</c>, fills
+    /// label boxes with <c>Style.LabelBackgroundColor</c>, and keeps every box inside
     /// <c>ClampBounds</c>.
     /// </summary>
-    constructor Create(const Canvas: IChartCanvas; const ScaleFactor: Single; const ClampBounds: TRectF);
+    constructor Create(const Canvas: IChartCanvas; const Style: TChartStyle; const ClampBounds: TRectF);
 
     /// <summary>Draws a label, clamped into bounds, whatever is already there.</summary>
     procedure Draw(const AnchorPoint: TPointF; const LabelText: string;
@@ -668,13 +728,17 @@ type
     function SegmentCount(const SweepAngle: Single): Integer;
     function ArcPoints(const Center: TPointF; const Radius, StartAngle, SweepAngle: Single;
                        const SegmentCount: Integer): TArray<TPointF>;
-    procedure DrawWedge(const CategoryIndex: Integer; const Center: TPointF;
-                        const InnerRadius, OuterRadius, StartAngle, SweepAngle: Single;
-                        const IsDonut: Boolean; const Value, Total: Double);
+    function BuildWedges(const Values: TArray<Double>; const Total: Double): TArray<TPieWedge>;
+    function LabelOrder(const Wedges: TArray<TPieWedge>): TArray<TPieWedge>;
+    procedure DrawWedge(const Wedge: TPieWedge; const Frame: TPieFrame);
+    procedure DrawWedgeLabel(const Wedge: TPieWedge; const Frame: TPieFrame);
+    function SegmentLabelText(const Wedge: TPieWedge; const Frame: TPieFrame): string;
+    function SegmentLabelPoint(const Wedge: TPieWedge; const Frame: TPieFrame): TPointF;
     function SegmentLabelDistance(const InnerRadius, OuterRadius: Single; const IsDonut: Boolean): Single;
     function PointAtAngle(const Center: TPointF; const Distance, AngleDegrees: Single): TPointF;
     procedure DrawCenterText(const Center: TPointF);
-    procedure DrawSegmentLabel(const AnchorPoint: TPointF; const LabelText: string);
+    procedure DrawSegmentLabel(const AnchorPoint: TPointF; const LabelText: string;
+                               const WedgeColor: TAlphaColor);
   public
     constructor Create(const Context: TChartDrawContext); override;
     destructor Destroy; override;
@@ -771,13 +835,18 @@ type
     procedure DrawAxisLabels;
     procedure DrawValueAxisLabels;
     procedure DrawValueAxisLabel(const Pixel: Single; const LabelText: string; const TextStyle: TChartTextStyle);
-    procedure DrawCategoryAxisLabel(const Pixel: Single; const LabelText: string; const TextStyle: TChartTextStyle);
+    procedure DrawCategoryAxisLabel(const Pixel: Single; const LabelText: string;
+                                    const TextStyle: TChartTextStyle; const Row: Integer);
     procedure DrawCategoryAxisLabels;
     procedure DrawContinuousXLabels;
     procedure DrawDiscreteCategoryLabels;
-    function SelectedCategoryLabelIndices: TArray<Integer>;
+    function CategoryLabelPlacements: TArray<TCategoryLabelPlacement>;
+    function IsCategoryAxisStaggered: Boolean;
+    function CategoryLabelRowCount: Integer;
+    function CategoryLabelRowPitch: Single;
     function CategoryLabelExtent(const Index: Integer): Single;
-    procedure DrawDiscreteCategoryLabel(const Index: Integer; const TextStyle: TChartTextStyle);
+    procedure DrawDiscreteCategoryLabel(const Placement: TCategoryLabelPlacement;
+                                        const TextStyle: TChartTextStyle);
     function MarginBounds: TRectF;
     function ValueLabelClampBounds: TRectF;
 
@@ -840,6 +909,26 @@ begin
   Result.StartIndex := StartIndex;
   Result.EndIndex := EndIndex;
   Result.Height := Height;
+end;
+
+class function TCategoryLabelPlacement.Create(const Index, Row: Integer): TCategoryLabelPlacement;
+begin
+  Result.Index := Index;
+  Result.Row := Row;
+end;
+
+class function TPieWedge.Create(const CategoryIndex: Integer; const StartAngle, SweepAngle: Single;
+                                const Value: Double): TPieWedge;
+begin
+  Result.CategoryIndex := CategoryIndex;
+  Result.StartAngle := StartAngle;
+  Result.SweepAngle := SweepAngle;
+  Result.Value := Value;
+end;
+
+function TPieWedge.MidAngle: Single;
+begin
+  Result := StartAngle + SweepAngle / 2;
 end;
 
 constructor TChartHitMap.Create(const DefaultRadius: Single);
@@ -909,12 +998,13 @@ begin
   end;
 end;
 
-constructor TChartLabelPlacer.Create(const Canvas: IChartCanvas; const ScaleFactor: Single;
+constructor TChartLabelPlacer.Create(const Canvas: IChartCanvas; const Style: TChartStyle;
                                      const ClampBounds: TRectF);
 begin
   inherited Create;
   FCanvas := Canvas;
-  FScaleFactor := ScaleFactor;
+  FScaleFactor := Style.ScaleFactor;
+  FBackgroundColor := Style.LabelBackgroundColor;
   FClampBounds := ClampBounds;
 end;
 
@@ -943,7 +1033,9 @@ begin
   if SkipWhenOverlapping and IntersectsPlaced(Background) then
     Exit;
 
-  FCanvas.FillRect(Background, ChartLabelBackground);
+  const HasVisibleBox = (TAlphaColorRec(FBackgroundColor).A > 0);
+  if HasVisibleBox then
+    FCanvas.FillRect(Background, FBackgroundColor);
   FCanvas.DrawText(AnchorPoint.X + Shift.X, AnchorPoint.Y + Shift.Y, LabelText, TextStyle,
                    AlignH, TTextAlignV.Middle);
 
@@ -1148,7 +1240,7 @@ begin
   SetLength(Result, Length(Breaks));
   for var Index := 0 to High(Breaks) do
   begin
-    Result[Index] := Format('%d%%', [Round(Breaks[Index] * 100)]);
+    Result[Index] := TAxisScale.FormatPercentage(Breaks[Index], FPlot.YAxis);
   end;
 end;
 
@@ -1771,7 +1863,7 @@ end;
 
 function TChartSeriesRenderer.ContinuousPointLabel(const XValue: Double): string;
 begin
-  Result := TAxisScale.FormatValue(XValue, FPlot.XAxis.UseThousandSeparator);
+  Result := TAxisScale.FormatValue(XValue, FPlot.XAxis.UseThousandSeparator, FPlot.XAxis.Decimals);
 end;
 
 function TChartSeriesRenderer.ValueLabelOffset: Single;
@@ -2392,7 +2484,7 @@ end;
 constructor TCircularSeriesRenderer.Create(const Context: TChartDrawContext);
 begin
   inherited Create(Context);
-  FLabelPlacer := TChartLabelPlacer.Create(Context.Canvas, Context.Style.ScaleFactor, Context.LabelClampBounds);
+  FLabelPlacer := TChartLabelPlacer.Create(Context.Canvas, Context.Style, Context.LabelClampBounds);
 end;
 
 destructor TCircularSeriesRenderer.Destroy;
@@ -2404,33 +2496,54 @@ end;
 procedure TCircularSeriesRenderer.Draw;
 begin
   const PieSeries = FPlot.Series[0];
-  const SeriesTotal = Total(PieSeries.Values);
-  const IsDonut = (FPlot.Kind = TChartKind.Donut);
-  const PieCenter = Center;
-  const PieOuterRadius = OuterRadius;
-  const PieInnerRadius = InnerRadius(PieOuterRadius);
 
-  const HasZeroTotal = SameValue(SeriesTotal, 0);
-  if not HasZeroTotal then
+  var Frame: TPieFrame;
+  Frame.Center := Center;
+  Frame.OuterRadius := OuterRadius;
+  Frame.InnerRadius := InnerRadius(Frame.OuterRadius);
+  Frame.IsDonut := (FPlot.Kind = TChartKind.Donut);
+  Frame.Total := Total(PieSeries.Values);
+
+  const Wedges = BuildWedges(PieSeries.Values, Frame.Total);
+
+  { Every wedge before any label: a label drawn right after its own wedge would be painted
+    over by the next one, and would still hold its place against the labels after it. }
+  for var Wedge in Wedges do
+    DrawWedge(Wedge, Frame);
+
+  const HasSegmentLabels = (FPlot.SegmentLabels <> TSegmentLabelMode.None);
+  if HasSegmentLabels then
   begin
-    var CumulativeValue: Double := 0.0;
-    for var Index := 0 to High(PieSeries.Values) do
-    begin
-      const Value = PieSeries.Values[Index];
-      const SweepAngle = 360 * Value / SeriesTotal;
-      const StartAngle = -90 + 360 * CumulativeValue / SeriesTotal;
-      CumulativeValue := CumulativeValue + Value;
-
-      const HasNoSweep = SameValue(SweepAngle, 0);
-      if HasNoSweep then
-        Continue;
-
-      DrawWedge(Index, PieCenter, PieInnerRadius, PieOuterRadius, StartAngle, SweepAngle, IsDonut, Value, SeriesTotal);
-    end;
+    for var Wedge in LabelOrder(Wedges) do
+      DrawWedgeLabel(Wedge, Frame);
   end;
 
-  if IsDonut then
-    DrawCenterText(PieCenter);
+  if Frame.IsDonut then
+    DrawCenterText(Frame.Center);
+end;
+
+function TCircularSeriesRenderer.BuildWedges(const Values: TArray<Double>; const Total: Double): TArray<TPieWedge>;
+begin
+  Result := [];
+
+  const HasZeroTotal = SameValue(Total, 0);
+  if HasZeroTotal then
+    Exit;
+
+  var CumulativeValue: Double := 0.0;
+  for var Index := 0 to High(Values) do
+  begin
+    const Value = Values[Index];
+    const SweepAngle = 360 * Value / Total;
+    const StartAngle = -90 + 360 * CumulativeValue / Total;
+    CumulativeValue := CumulativeValue + Value;
+
+    const HasNoSweep = SameValue(SweepAngle, 0);
+    if HasNoSweep then
+      Continue;
+
+    Result := Result + [TPieWedge.Create(Index, StartAngle, SweepAngle, Value)];
+  end;
 end;
 
 function TCircularSeriesRenderer.Center: TPointF;
@@ -2476,31 +2589,68 @@ begin
   end;
 end;
 
-procedure TCircularSeriesRenderer.DrawWedge(const CategoryIndex: Integer; const Center: TPointF;
-                                            const InnerRadius, OuterRadius, StartAngle, SweepAngle: Single;
-                                            const IsDonut: Boolean; const Value, Total: Double);
+/// <summary>
+/// The wedges in the order their labels are offered to the placer: the largest value
+/// first, so when two labels collide it is the smaller segment's that goes. Equal values
+/// keep category order, which the comparison spells out because <c>TArray.Sort</c> is not
+/// stable, so the same data always keeps the same labels.
+/// </summary>
+function TCircularSeriesRenderer.LabelOrder(const Wedges: TArray<TPieWedge>): TArray<TPieWedge>;
 begin
-  const Color = FPlot.CategoryColor(CategoryIndex);
-  const Segments = SegmentCount(SweepAngle);
+  Result := Copy(Wedges);
+  TArray.Sort<TPieWedge>(Result, TComparer<TPieWedge>.Construct(
+    function(const Left, Right: TPieWedge): Integer
+    begin
+      Result := CompareValue(Right.Value, Left.Value);
+      if Result = 0 then
+        Result := CompareValue(Left.CategoryIndex, Right.CategoryIndex);
+    end));
+end;
+
+procedure TCircularSeriesRenderer.DrawWedge(const Wedge: TPieWedge; const Frame: TPieFrame);
+begin
+  const Color = FPlot.CategoryColor(Wedge.CategoryIndex);
+  const Segments = SegmentCount(Wedge.SweepAngle);
+  const OuterArc = ArcPoints(Frame.Center, Frame.OuterRadius, Wedge.StartAngle, Wedge.SweepAngle, Segments);
 
   var Points: TArray<TPointF>;
-  if IsDonut then
-    Points := ArcPoints(Center, OuterRadius, StartAngle, SweepAngle, Segments) +
-              TChartArray.Reversed<TPointF>(ArcPoints(Center, InnerRadius, StartAngle, SweepAngle, Segments))
+  if Frame.IsDonut then
+    Points := OuterArc + TChartArray.Reversed<TPointF>(
+                ArcPoints(Frame.Center, Frame.InnerRadius, Wedge.StartAngle, Wedge.SweepAngle, Segments))
   else
-    Points := [Center] + ArcPoints(Center, OuterRadius, StartAngle, SweepAngle, Segments);
+    Points := [Frame.Center] + OuterArc;
 
   FCanvas.FillPolygon(Points, Color);
 
-  const MidAngle = StartAngle + SweepAngle / 2;
-  const LabelDistance = SegmentLabelDistance(InnerRadius, OuterRadius, IsDonut);
-  const LabelPoint = PointAtAngle(Center, LabelDistance, MidAngle);
-  const LabelText = Format('%s (%d%%)', [CategoryLabel(CategoryIndex), Round(100 * Value / Total)]);
-  DrawSegmentLabel(LabelPoint, LabelText);
+  const Info = TChartHitMap.BuildInfo(0, Wedge.CategoryIndex, '', CategoryLabel(Wedge.CategoryIndex),
+                                      Wedge.Value, SegmentLabelPoint(Wedge, Frame), Color);
+  FHitMap.AddSector(Frame.Center, Frame.InnerRadius, Frame.OuterRadius, Wedge.StartAngle, Wedge.SweepAngle, Info);
+end;
 
-  const Info = TChartHitMap.BuildInfo(0, CategoryIndex, '', CategoryLabel(CategoryIndex),
-                                      Value, LabelPoint, Color);
-  FHitMap.AddSector(Center, InnerRadius, OuterRadius, StartAngle, SweepAngle, Info);
+procedure TCircularSeriesRenderer.DrawWedgeLabel(const Wedge: TPieWedge; const Frame: TPieFrame);
+begin
+  DrawSegmentLabel(SegmentLabelPoint(Wedge, Frame), SegmentLabelText(Wedge, Frame),
+                   FPlot.CategoryColor(Wedge.CategoryIndex));
+end;
+
+function TCircularSeriesRenderer.SegmentLabelText(const Wedge: TPieWedge; const Frame: TPieFrame): string;
+begin
+  const CategoryText = CategoryLabel(Wedge.CategoryIndex);
+  const PercentageText = TAxisScale.FormatPercentage(Wedge.Value / Frame.Total, FPlot.YAxis);
+
+  case FPlot.SegmentLabels of
+    TSegmentLabelMode.CategoryAndPercentage : Result := Format('%s (%s)', [CategoryText, PercentageText]);
+    TSegmentLabelMode.Percentage            : Result := PercentageText;
+    TSegmentLabelMode.Category              : Result := CategoryText;
+  else
+    raise ENotSupportedException.CreateFmt('Unsupported segment label mode: %d', [Ord(FPlot.SegmentLabels)]);
+  end;
+end;
+
+function TCircularSeriesRenderer.SegmentLabelPoint(const Wedge: TPieWedge; const Frame: TPieFrame): TPointF;
+begin
+  const LabelDistance = SegmentLabelDistance(Frame.InnerRadius, Frame.OuterRadius, Frame.IsDonut);
+  Result := PointAtAngle(Frame.Center, LabelDistance, Wedge.MidAngle);
 end;
 
 function TCircularSeriesRenderer.SegmentLabelDistance(const InnerRadius, OuterRadius: Single;
@@ -2528,9 +2678,15 @@ begin
   FCanvas.DrawText(Center.X, Center.Y, FPlot.DonutCenterText, TextStyle, TTextAlignH.Center, TTextAlignV.Middle);
 end;
 
-procedure TCircularSeriesRenderer.DrawSegmentLabel(const AnchorPoint: TPointF; const LabelText: string);
+procedure TCircularSeriesRenderer.DrawSegmentLabel(const AnchorPoint: TPointF; const LabelText: string;
+                                                   const WedgeColor: TAlphaColor);
 begin
-  const TextStyle = TChartTextStyle.Create(FStyle.FontName, FStyle.AxisFontSize, False, FStyle.TextColor);
+  { A segment label sits on its own wedge, so what is behind the text is the label box
+    composited over that wedge: the box itself when it is opaque, the wedge when there is no
+    box. The style's text color is kept while it reaches the style's minimum contrast there. }
+  const Behind = TChartColors.Blend(FStyle.LabelBackgroundColor, WedgeColor);
+  const TextColor = TChartColors.ReadableTextColor(FStyle.TextColor, Behind, FStyle.MinimumTextContrast);
+  const TextStyle = TChartTextStyle.Create(FStyle.FontName, FStyle.AxisFontSize, False, TextColor);
   FLabelPlacer.DrawIfClear(AnchorPoint, LabelText, TextStyle);
 end;
 
@@ -3142,8 +3298,15 @@ begin
   if not AxisVisible then
     Exit(0);
 
+  { A staggered category axis, which only a vertical chart has, spends its extra row here.
+    The room is reserved whenever the layout is selected, whether or not a label actually
+    reaches the second row: a plot area that grew and shrank by a line of text as the data
+    or the window changed would be worse than one that is a line shorter throughout. }
+  const ExtraRows = CategoryLabelRowCount - 1;
+
   const SampleSize = FCanvas.MeasureText('0', AxisTextStyle);
-  Result := BottomLabelMarginAbove + SampleSize.Height + BottomLabelMarginBelow;
+  Result := BottomLabelMarginAbove + SampleSize.Height + (ExtraRows * CategoryLabelRowPitch) +
+            BottomLabelMarginBelow;
 end;
 
 function TChartRenderJob.BottomEdgeAxisVisible(const IsHorizontal: Boolean): Boolean;
@@ -3253,12 +3416,15 @@ end;
 
 /// <summary>The counterpart of <c>DrawValueAxisLabel</c> for the category axis' edge.</summary>
 procedure TChartRenderJob.DrawCategoryAxisLabel(const Pixel: Single; const LabelText: string;
-                                                const TextStyle: TChartTextStyle);
+                                                const TextStyle: TChartTextStyle; const Row: Integer);
 begin
+  { Only the bottom edge of a vertical chart ever has a second row, stepping down the page
+    away from the plot; a horizontal chart's labels always have Row 0. }
   if FGeometry.IsHorizontal then
     FCanvas.DrawText(AxisLabelRightEdge, Pixel, LabelText, TextStyle, TTextAlignH.Right, TTextAlignV.Middle)
   else
-    FCanvas.DrawText(Pixel, AxisLabelTopEdge, LabelText, TextStyle, TTextAlignH.Center, TTextAlignV.Top);
+    FCanvas.DrawText(Pixel, AxisLabelTopEdge + Row * CategoryLabelRowPitch, LabelText, TextStyle,
+                     TTextAlignH.Center, TTextAlignV.Top);
 end;
 
 procedure TChartRenderJob.DrawCategoryAxisLabels;
@@ -3277,15 +3443,15 @@ begin
   const TextStyle = AxisTextStyle;
   for var Index := 0 to High(FXBreaks) do
   begin
-    DrawCategoryAxisLabel(FGeometry.MapX(FXBreaks[Index]), FXBreakLabels[Index], TextStyle);
+    DrawCategoryAxisLabel(FGeometry.MapX(FXBreaks[Index]), FXBreakLabels[Index], TextStyle, 0);
   end;
 end;
 
 procedure TChartRenderJob.DrawDiscreteCategoryLabels;
 begin
   const TextStyle = AxisTextStyle;
-  for var Index in SelectedCategoryLabelIndices do
-    DrawDiscreteCategoryLabel(Index, TextStyle);
+  for var Placement in CategoryLabelPlacements do
+    DrawDiscreteCategoryLabel(Placement, TextStyle);
 end;
 
 function TChartRenderJob.CategoryLabelExtent(const Index: Integer): Single;
@@ -3297,46 +3463,89 @@ begin
     Result := TextSize.Width;
 end;
 
-function TChartRenderJob.SelectedCategoryLabelIndices: TArray<Integer>;
+/// <summary>
+/// Whether the category labels get a second row: only for a discrete category axis along
+/// the bottom of a vertical chart. A horizontal chart stacks its labels one per bar down the
+/// left edge, where a second "row" would be a second column costing the plot a whole label
+/// width, so it keeps the single-row rule however the setting reads.
+/// </summary>
+function TChartRenderJob.IsCategoryAxisStaggered: Boolean;
+begin
+  const IsStaggered = (FPlot.XAxis.CategoryLabelLayout = TCategoryLabelLayout.Staggered);
+  const IsVertical = (FPlot.Orientation = TChartOrientation.Vertical);
+  Result := IsStaggered and IsVertical and not FIsContinuousX and not IsPieOrDonut;
+end;
+
+function TChartRenderJob.CategoryLabelRowCount: Integer;
+begin
+  if IsCategoryAxisStaggered then
+    Result := StaggeredCategoryLabelRowCount
+  else
+    Result := 1;
+end;
+
+/// <summary>
+/// The step from one category label row to the next, downward below a vertical chart: a
+/// line of axis text plus a clear gap, so the second row reads as its own line.
+/// </summary>
+function TChartRenderJob.CategoryLabelRowPitch: Single;
+begin
+  const SampleSize = FCanvas.MeasureText('0', AxisTextStyle);
+  Result := SampleSize.Height + (StaggeredCategoryLabelGapAtReferenceScale * FStyle.ScaleFactor);
+end;
+
+/// <summary>
+/// Walks the categories in order and hands each label the first row it fits on, which is
+/// the single-row thinning rule generalized: a label fits an empty row, or one whose last
+/// label is far enough away that the two do not touch. A label that fits no row is
+/// dropped. With one row this selects exactly the indices the rule always selected, index
+/// 0 included, since nothing has been placed when index 0 is offered row 0.
+/// </summary>
+function TChartRenderJob.CategoryLabelPlacements: TArray<TCategoryLabelPlacement>;
 begin
   Result := [];
   if FCategoryCount = 0 then
     Exit;
 
-  const LastIndex = FCategoryCount - 1;
-  Result := [0];
-  var LastDrawnIndex := 0;
-  var LastDrawnExtent := CategoryLabelExtent(0);
+  const RowCount = CategoryLabelRowCount;
+  const NoLabelPlaced = -1;
 
-  for var Index := 1 to LastIndex - 1 do
+  var LastIndexInRow: TArray<Integer>;
+  var LastExtentInRow: TArray<Single>;
+  SetLength(LastIndexInRow, RowCount);
+  SetLength(LastExtentInRow, RowCount);
+  for var Row := 0 to RowCount - 1 do
   begin
-    const Extent = CategoryLabelExtent(Index);
-    const Distance = (Index - LastDrawnIndex) * FGeometry.CategoryBand;
-    const RequiredGap = (LastDrawnExtent + Extent) / 2;
-    const Fits = (Distance >= RequiredGap);
-    if not Fits then
-      Continue;
-
-    Result := Result + [Index];
-    LastDrawnIndex := Index;
-    LastDrawnExtent := Extent;
+    LastIndexInRow[Row] := NoLabelPlaced;
+    LastExtentInRow[Row] := 0;
   end;
 
-  const HasDistinctLastIndex = (LastIndex > 0);
-  if not HasDistinctLastIndex then
-    Exit;
+  for var Index := 0 to FCategoryCount - 1 do
+  begin
+    const Extent = CategoryLabelExtent(Index);
 
-  const LastExtent = CategoryLabelExtent(LastIndex);
-  const DistanceToLast = (LastIndex - LastDrawnIndex) * FGeometry.CategoryBand;
-  const RequiredGapToLast = (LastDrawnExtent + LastExtent) / 2;
-  const LastFits = (DistanceToLast >= RequiredGapToLast);
-  if LastFits then
-    Result := Result + [LastIndex];
+    for var Row := 0 to RowCount - 1 do
+    begin
+      const IsRowEmpty = (LastIndexInRow[Row] = NoLabelPlaced);
+      const Distance = (Index - LastIndexInRow[Row]) * FGeometry.CategoryBand;
+      const RequiredGap = (LastExtentInRow[Row] + Extent) / 2;
+      const Fits = IsRowEmpty or (Distance >= RequiredGap);
+      if not Fits then
+        Continue;
+
+      Result := Result + [TCategoryLabelPlacement.Create(Index, Row)];
+      LastIndexInRow[Row] := Index;
+      LastExtentInRow[Row] := Extent;
+      Break;
+    end;
+  end;
 end;
 
-procedure TChartRenderJob.DrawDiscreteCategoryLabel(const Index: Integer; const TextStyle: TChartTextStyle);
+procedure TChartRenderJob.DrawDiscreteCategoryLabel(const Placement: TCategoryLabelPlacement;
+                                                    const TextStyle: TChartTextStyle);
 begin
-  DrawCategoryAxisLabel(CategoryCenter(Index), FCategoryLabels[Index], TextStyle);
+  DrawCategoryAxisLabel(CategoryCenter(Placement.Index), FCategoryLabels[Placement.Index],
+                        TextStyle, Placement.Row);
 end;
 
 procedure TChartRenderJob.DrawRangeOverlays;
@@ -3458,7 +3667,7 @@ begin
   if HasNoLabels then
     Exit;
 
-  const Placer = TChartLabelPlacer.Create(FCanvas, FStyle.ScaleFactor, ValueLabelClampBounds);
+  const Placer = TChartLabelPlacer.Create(FCanvas, FStyle, ValueLabelClampBounds);
   try
     for var Group in FSeriesRenderer.BuildValueLabelGroups do
     begin
@@ -3519,13 +3728,14 @@ end;
 procedure TChartRenderJob.DrawValueLabelCandidate(const Placer: TChartLabelPlacer;
                                                   const Candidate: TValueLabelCandidate);
 begin
-  const LabelText = TAxisScale.FormatValue(Candidate.Value, FPlot.YAxis.UseThousandSeparator) + FPlot.YAxis.LabelSuffix;
+  const LabelText = TAxisScale.FormatValue(Candidate.Value, FPlot.YAxis.UseThousandSeparator,
+                                           FPlot.YAxis.Decimals) + FPlot.YAxis.LabelSuffix;
   Placer.DrawIfClear(Candidate.AnchorPoint, LabelText, AxisTextStyle);
 end;
 
 procedure TChartRenderJob.DrawAnnotations;
 begin
-  const Placer = TChartLabelPlacer.Create(FCanvas, FStyle.ScaleFactor, MarginBounds);
+  const Placer = TChartLabelPlacer.Create(FCanvas, FStyle, MarginBounds);
   try
     for var Annotation in FPlot.Annotations do
     begin

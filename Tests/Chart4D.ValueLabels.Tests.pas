@@ -92,6 +92,12 @@ type
     procedure ValueLabels_NearAxisLabels_AreDrawnAndStayOutOfTheAxisLabelBand;
 
     [Test]
+    procedure ValueLabels_YAxisDecimals_LabelsCarryThatManyDecimals;
+
+    [Test]
+    procedure ValueLabels_StyleLabelBackgroundColor_FillsEveryValueLabelBox;
+
+    [Test]
     procedure ArrowChart_ShaftStopsAtTheHeadInsteadOfRunningThroughTheTip;
   end;
 
@@ -698,6 +704,54 @@ begin
     Assert.AreEqual(1, WhiteBoxCount);
     Assert.AreEqual(1, CountOfText(TAxisScale.FormatValue(82.5, False)));
     Assert.AreEqual(0, CountOfText(TAxisScale.FormatValue(70.1, False)));
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartValueLabelsTests.ValueLabels_YAxisDecimals_LabelsCarryThatManyDecimals;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Bar;
+    Plot.Categories := ['A', 'B'];
+    Plot.AddSeries('Only', [10.5, 20]);
+    Plot.ValueLabels := TValueLabelMode.All;
+
+    var AxisOptions := Plot.YAxis;
+    AxisOptions.Decimals := 2;
+    Plot.YAxis := AxisOptions;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    Assert.AreEqual(1, CountOfValueLabelText('10.50'));
+    Assert.AreEqual(1, CountOfValueLabelText('20.00'));
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartValueLabelsTests.ValueLabels_StyleLabelBackgroundColor_FillsEveryValueLabelBox;
+begin
+  { Value labels share the label-box convention with segment labels and text annotations
+    (SPEC.md 4.29), so the style's box color reaches them too. }
+  const Cream = TAlphaColor($FFFFF3C4);
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Bar;
+    Plot.Categories := ['A', 'B'];
+    Plot.AddSeries('Only', [10, 20]);
+    Plot.ValueLabels := TValueLabelMode.All;
+
+    var Style := Plot.Style;
+    Style.LabelBackgroundColor := Cream;
+    Plot.Style := Style;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    Assert.AreEqual(2, FRecordingCanvas.CountOfColor(TCanvasCallKind.FillRect, Cream),
+      'Both value labels must sit on a box of the style''s color');
+    Assert.AreEqual(0, WhiteBoxCount, 'No value label may keep the white box');
   finally
     Plot.Free;
   end;

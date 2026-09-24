@@ -50,6 +50,7 @@ type
     FLegendReversed: Boolean;
     FAnnotations: TArray<TChartAnnotation>;
     FValueLabels: TValueLabelMode;
+    FSegmentLabels: TSegmentLabelMode;
     FHighlightedSeriesIndex: Integer;
     FDonutCenterText: string;
     FOnChanged: TNotifyEvent;
@@ -61,6 +62,8 @@ type
     procedure SetLogoFilePath(const Value: string);
     procedure SetCategories(const Value: TArray<string>);
     procedure SetStyle(const Value: TChartStyle);
+    function GetStyle: TChartStyle;
+    function PaletteColor(const Index: Integer): TAlphaColor;
     procedure SetXAxis(const Value: TAxisOptions);
     procedure SetYAxis(const Value: TAxisOptions);
     procedure SetOrientation(const Value: TChartOrientation);
@@ -68,6 +71,7 @@ type
     procedure SetLegendPosition(const Value: TLegendPosition);
     procedure SetLegendReversed(const Value: Boolean);
     procedure SetValueLabels(const Value: TValueLabelMode);
+    procedure SetSegmentLabels(const Value: TSegmentLabelMode);
     procedure SetHighlightedSeriesIndex(const Value: Integer);
     procedure SetDonutCenterText(const Value: string);
 
@@ -159,7 +163,8 @@ type
 
     /// <summary>
     /// Returns the color of the series at <c>Index</c>: its own <c>Color</c> when
-    /// non-zero, otherwise <c>DefaultPalette[Index mod Length(DefaultPalette)]</c>. When
+    /// non-zero, otherwise color <c>Index</c> of the palette (<c>Style.Palette</c>, or
+    /// <c>DefaultPalette</c> when that is empty), wrapping past its end. When
     /// <c>HighlightedSeriesIndex</c> is a valid series index other than <c>Index</c>,
     /// returns <c>ChartLightGrey</c> instead, muting every series but the highlighted one.
     /// </summary>
@@ -167,10 +172,10 @@ type
     function SeriesColor(const Index: Integer): TAlphaColor;
 
     /// <summary>
-    /// Returns the color for category <c>Index</c>: always
-    /// <c>DefaultPalette[Index mod Length(DefaultPalette)]</c>. Categories have no
-    /// per-category color override. Used by <c>Pie</c>/<c>Donut</c> charts, which color
-    /// by category rather than by series.
+    /// Returns the color for category <c>Index</c>: color <c>Index</c> of the palette
+    /// (<c>Style.Palette</c>, or <c>DefaultPalette</c> when that is empty), wrapping past
+    /// its end. Categories have no per-category color override. Used by <c>Pie</c>/
+    /// <c>Donut</c> charts, which color by category rather than by series.
     /// </summary>
     /// <exception cref="EChart4DException">Raised when <c>Index</c> is negative.</exception>
     function CategoryColor(const Index: Integer): TAlphaColor;
@@ -189,8 +194,12 @@ type
     property Categories: TArray<string> read FCategories write SetCategories;
     /// <summary>The owned list of data series.</summary>
     property Series: TObjectList<TChartSeries> read FSeries;
-    /// <summary>The visual style applied when rendering.</summary>
-    property Style: TChartStyle read FStyle write SetStyle;
+    /// <summary>
+    /// The visual style applied when rendering. Reading returns a copy whose
+    /// <c>Palette</c> is a copy too, and writing stores a copy, so the plot owns its
+    /// palette and a caller changes it only by assigning the style back.
+    /// </summary>
+    property Style: TChartStyle read GetStyle write SetStyle;
     /// <summary>The X axis (category axis for Line/Area charts) options.</summary>
     property XAxis: TAxisOptions read FXAxis write SetXAxis;
     /// <summary>The Y axis (value axis) options.</summary>
@@ -207,6 +216,12 @@ type
     property Annotations: TArray<TChartAnnotation> read FAnnotations;
     /// <summary>Which data points get a built-in value label. Default <c>None</c>.</summary>
     property ValueLabels: TValueLabelMode read FValueLabels write SetValueLabels;
+    /// <summary>
+    /// What each segment label of a <c>Pie</c> or <c>Donut</c> chart shows. Default
+    /// <c>CategoryAndPercentage</c>. Meaningful only for those two kinds; a <c>None</c>
+    /// chart draws no segment labels but keeps its hover tooltips.
+    /// </summary>
+    property SegmentLabels: TSegmentLabelMode read FSegmentLabels write SetSegmentLabels;
     /// <summary>
     /// The index of the series drawn in its own color while every other series is muted
     /// to <c>ChartLightGrey</c>, or -1 (default) to draw every series in its own color.
@@ -298,6 +313,7 @@ begin
   FStackMode := TStackMode.Values;
   FLegendPosition := TLegendPosition.Top;
   FValueLabels := TValueLabelMode.None;
+  FSegmentLabels := TSegmentLabelMode.CategoryAndPercentage;
   FHighlightedSeriesIndex := -1;
 end;
 
@@ -504,7 +520,7 @@ begin
   if HasCustomColor then
     Result := CurrentSeries.Color
   else
-    Result := DefaultPalette[Index mod Length(DefaultPalette)];
+    Result := PaletteColor(Index);
 
   const HasValidHighlight = (FHighlightedSeriesIndex >= 0) and (FHighlightedSeriesIndex < FSeries.Count);
   const IsMuted = HasValidHighlight and (Index <> FHighlightedSeriesIndex);
@@ -518,7 +534,7 @@ begin
   if IsNegative then
     raise EChart4DException.CreateFmt(SCategoryColorIndexNegative, [Index]);
 
-  Result := DefaultPalette[Index mod Length(DefaultPalette)];
+  Result := PaletteColor(Index);
 end;
 
 procedure TChartPlot.SetKind(const Value: TChartKind);
@@ -559,8 +575,27 @@ end;
 
 procedure TChartPlot.SetStyle(const Value: TChartStyle);
 begin
+  { A dynamic array in a record is shared by reference, so without these copies a caller
+    could change the plot's colors in place, through any copy of the style, without
+    OnChanged ever firing and so without the chart repainting. }
   FStyle := Value;
+  FStyle.Palette := Copy(Value.Palette);
   NotifyChanged;
+end;
+
+function TChartPlot.GetStyle: TChartStyle;
+begin
+  Result := FStyle;
+  Result.Palette := Copy(FStyle.Palette);
+end;
+
+function TChartPlot.PaletteColor(const Index: Integer): TAlphaColor;
+begin
+  const HasOwnPalette = (Length(FStyle.Palette) > 0);
+  if HasOwnPalette then
+    Result := FStyle.Palette[Index mod Length(FStyle.Palette)]
+  else
+    Result := DefaultPalette[Index mod Length(DefaultPalette)];
 end;
 
 procedure TChartPlot.SetXAxis(const Value: TAxisOptions);
@@ -602,6 +637,12 @@ end;
 procedure TChartPlot.SetValueLabels(const Value: TValueLabelMode);
 begin
   FValueLabels := Value;
+  NotifyChanged;
+end;
+
+procedure TChartPlot.SetSegmentLabels(const Value: TSegmentLabelMode);
+begin
+  FSegmentLabels := Value;
   NotifyChanged;
 end;
 

@@ -20,6 +20,7 @@ interface
 uses
   System.Math,
   System.SysUtils,
+  Chart4D.Consts,
   Chart4D.Types;
 
 type
@@ -38,12 +39,26 @@ type
     BreakLabels: TArray<string>;
     /// <summary>Whether formatted values use a thousand separator.</summary>
     UseThousandSeparator: Boolean;
+    /// <summary>
+    /// The fixed number of decimals formatted values are shown with, or
+    /// <c>AutomaticDecimals</c> (the default) to keep up to ten decimals and drop the
+    /// trailing zeros. Counts above 15 are treated as 15.
+    /// </summary>
+    Decimals: Integer;
     /// <summary>A suffix appended to break labels, e.g. '%' or ' years'.</summary>
     LabelSuffix: string;
     /// <summary>Whether <c>LabelSuffix</c> is appended to the last break only, or to every break.</summary>
     SuffixOnLastOnly: Boolean;
     /// <summary>Whether the axis text is drawn.</summary>
     Visible: Boolean;
+    /// <summary>
+    /// How a crowded discrete category axis lays its labels out. Default
+    /// <c>SingleRow</c>. Read from the X axis options, and applied only along the bottom of
+    /// a vertical chart. A horizontal chart ignores it, since it stacks its labels one per
+    /// bar down the left edge; so does a continuous or date X axis, whose breaks are spaced
+    /// to fit by construction.
+    /// </summary>
+    CategoryLabelLayout: TCategoryLabelLayout;
     /// <summary>The scale the axis maps data through. Default <c>Linear</c>.</summary>
     Scale: TAxisScaleKind;
     /// <summary>The base of a <c>Logarithmic</c> scale. Default 10.</summary>
@@ -123,8 +138,12 @@ type
     class function NiceFactor(const Normalized: Double): Double; static;
     class function CollectBreaks(const MinValue, MaxValue, Step: Double): TArray<Double>; static;
 
+    class function DecimalPattern(const UseThousandSeparator: Boolean; const Decimals: Integer): string; static;
     class function FormatValueWithSettings(const Value: Double; const UseThousandSeparator: Boolean;
+                                           const Decimals: Integer;
                                            const Settings: TFormatSettings): string; static;
+    class function FormatWithOptions(const Value: Double; const Options: TAxisOptions;
+                                     const Decimals: Integer): string; static;
     class function FormatBreakValue(const Value: Double; const Options: TAxisOptions): string; static;
     class function BuildDateLabels(const Breaks: TArray<Double>; const Options: TAxisOptions): TArray<string>; static;
 
@@ -151,6 +170,16 @@ type
                                const UseThousandSeparator: Boolean): string; overload; static;
 
     /// <summary>
+    /// Formats a value exactly like the 2-argument overload, except that
+    /// <c>Decimals</c> fixes the number of decimals shown, padding with zeros where the
+    /// value has fewer. <c>AutomaticDecimals</c> gives the 2-argument overload's own
+    /// trimmed output, 0 drops the decimal point altogether, and counts above 15 are
+    /// treated as 15.
+    /// </summary>
+    class function FormatValue(const Value: Double; const UseThousandSeparator: Boolean;
+                               const Decimals: Integer): string; overload; static;
+
+    /// <summary>
     /// Formats a value exactly like the 2-argument overload, except through
     /// <c>TFormatSettings.Create(LocaleName)</c> instead of the invariant convention, so
     /// the decimal point, thousand separator and trimmed trailing zeros follow that
@@ -160,13 +189,28 @@ type
                                const LocaleName: string): string; overload; static;
 
     /// <summary>
+    /// Formats a value through <c>LocaleName</c> like the 3-argument locale overload, and
+    /// with the fixed decimal count of the 3-argument <c>Decimals</c> overload.
+    /// </summary>
+    class function FormatValue(const Value: Double; const UseThousandSeparator: Boolean;
+                               const LocaleName: string; const Decimals: Integer): string; overload; static;
+
+    /// <summary>
+    /// Formats <c>Proportion</c>, a fraction between 0 and 1, as a percentage with a
+    /// trailing '%', honoring <c>Options.LocaleName</c> and <c>Options.Decimals</c>.
+    /// <c>AutomaticDecimals</c> means whole percents here rather than the trimmed
+    /// decimals <c>FormatValue</c> gives, since a percentage carries its own precision.
+    /// </summary>
+    class function FormatPercentage(const Proportion: Double; const Options: TAxisOptions): string; static;
+
+    /// <summary>
     /// Builds one label per break. <c>Options.BreakLabels</c> wins entirely when
     /// non-empty; otherwise, when <c>Options.DateMode &lt;&gt; TAxisDateMode.None</c>,
     /// every break is formatted with <c>FormatDateValue</c> using <c>Options.DateMode</c>
     /// as it is, which must therefore already be resolved (never <c>Auto</c>); otherwise every break is
     /// formatted with <c>FormatValue</c> (the locale overload when
-    /// <c>Options.LocaleName &lt;&gt; ''</c>) and <c>Options.LabelSuffix</c> is appended
-    /// per <c>Options.SuffixOnLastOnly</c>.
+    /// <c>Options.LocaleName &lt;&gt; ''</c>) at <c>Options.Decimals</c> decimals, and
+    /// <c>Options.LabelSuffix</c> is appended per <c>Options.SuffixOnLastOnly</c>.
     /// </summary>
     class function BuildLabels(const Breaks: TArray<Double>;
                                const Options: TAxisOptions): TArray<string>; static;
@@ -234,8 +278,7 @@ type
 implementation
 
 uses
-  System.DateUtils,
-  Chart4D.Consts;
+  System.DateUtils;
 
 class function TAxisOptions.Default: TAxisOptions;
 begin
@@ -244,9 +287,11 @@ begin
   Result.Breaks := [];
   Result.BreakLabels := [];
   Result.UseThousandSeparator := False;
+  Result.Decimals := AutomaticDecimals;
   Result.LabelSuffix := '';
   Result.SuffixOnLastOnly := True;
   Result.Visible := True;
+  Result.CategoryLabelLayout := TCategoryLabelLayout.SingleRow;
   Result.Scale := TAxisScaleKind.Linear;
   Result.LogBase := 10;
   Result.DateMode := TAxisDateMode.None;
@@ -380,34 +425,80 @@ begin
   Result := CollectBreaks(Range.Min, Range.Max, Step);
 end;
 
+class function TAxisScale.DecimalPattern(const UseThousandSeparator: Boolean; const Decimals: Integer): string;
+begin
+  { FormatFloat stops honoring digits past the 15 significant ones a Double carries, so a
+    larger count would only pad the label with noise. }
+  const MaximumDecimals = 15;
+
+  var Pattern: string := '0';
+  if UseThousandSeparator then
+    Pattern := '#,##0';
+
+  const IsAutomatic = (Decimals < 0);
+  if IsAutomatic then
+    Exit(Pattern + '.##########');
+
+  const FixedDecimals = Min(Decimals, MaximumDecimals);
+  if FixedDecimals = 0 then
+    Exit(Pattern);
+
+  Result := Pattern + '.' + StringOfChar('0', FixedDecimals);
+end;
+
 class function TAxisScale.FormatValueWithSettings(const Value: Double; const UseThousandSeparator: Boolean;
+                                                  const Decimals: Integer;
                                                   const Settings: TFormatSettings): string;
 begin
-  var Pattern := '0.##########';
-  if UseThousandSeparator then
-    Pattern := '#,##0.##########';
-
-  Result := FormatFloat(Pattern, Value, Settings);
+  Result := FormatFloat(DecimalPattern(UseThousandSeparator, Decimals), Value, Settings);
 end;
 
 class function TAxisScale.FormatValue(const Value: Double;
                                       const UseThousandSeparator: Boolean): string;
 begin
-  Result := FormatValueWithSettings(Value, UseThousandSeparator, TFormatSettings.Invariant);
+  Result := FormatValue(Value, UseThousandSeparator, AutomaticDecimals);
+end;
+
+class function TAxisScale.FormatValue(const Value: Double; const UseThousandSeparator: Boolean;
+                                      const Decimals: Integer): string;
+begin
+  Result := FormatValueWithSettings(Value, UseThousandSeparator, Decimals, TFormatSettings.Invariant);
 end;
 
 class function TAxisScale.FormatValue(const Value: Double; const UseThousandSeparator: Boolean;
                                       const LocaleName: string): string;
 begin
-  Result := FormatValueWithSettings(Value, UseThousandSeparator, TFormatSettings.Create(LocaleName));
+  Result := FormatValue(Value, UseThousandSeparator, LocaleName, AutomaticDecimals);
+end;
+
+class function TAxisScale.FormatValue(const Value: Double; const UseThousandSeparator: Boolean;
+                                      const LocaleName: string; const Decimals: Integer): string;
+begin
+  Result := FormatValueWithSettings(Value, UseThousandSeparator, Decimals, TFormatSettings.Create(LocaleName));
+end;
+
+class function TAxisScale.FormatWithOptions(const Value: Double; const Options: TAxisOptions;
+                                            const Decimals: Integer): string;
+begin
+  if Options.LocaleName <> '' then
+    Result := FormatValue(Value, Options.UseThousandSeparator, Options.LocaleName, Decimals)
+  else
+    Result := FormatValue(Value, Options.UseThousandSeparator, Decimals);
+end;
+
+class function TAxisScale.FormatPercentage(const Proportion: Double; const Options: TAxisOptions): string;
+begin
+  var Decimals := Options.Decimals;
+  const IsAutomatic = (Decimals < 0);
+  if IsAutomatic then
+    Decimals := 0;
+
+  Result := FormatWithOptions(Proportion * 100, Options, Decimals) + '%';
 end;
 
 class function TAxisScale.FormatBreakValue(const Value: Double; const Options: TAxisOptions): string;
 begin
-  if Options.LocaleName <> '' then
-    Result := FormatValue(Value, Options.UseThousandSeparator, Options.LocaleName)
-  else
-    Result := FormatValue(Value, Options.UseThousandSeparator);
+  Result := FormatWithOptions(Value, Options, Options.Decimals);
 end;
 
 class function TAxisScale.BuildDateLabels(const Breaks: TArray<Double>; const Options: TAxisOptions): TArray<string>;
