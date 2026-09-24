@@ -118,6 +118,7 @@ names the categories, show the share alone:
 
 ```pascal
 Plot.SegmentLabels := TSegmentLabelMode.Percentage;  // CategoryAndPercentage, Percentage, Category, None
+Plot.SegmentLabelDecimals := 1;                      // 70.4%; whole percents by default
 ```
 
 Where two segment labels would collide, the larger segment keeps its label.

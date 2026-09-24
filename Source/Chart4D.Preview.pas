@@ -87,6 +87,7 @@ begin
   Preview.LegendReversed := Settings.LegendReversed;
   Preview.ValueLabels := Settings.ValueLabels;
   Preview.SegmentLabels := Settings.SegmentLabels;
+  Preview.SegmentLabelDecimals := Settings.SegmentLabelDecimals;
   Preview.DonutCenterText := Settings.DonutCenterText;
 end;
 

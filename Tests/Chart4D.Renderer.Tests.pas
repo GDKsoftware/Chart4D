@@ -443,10 +443,7 @@ begin
     Plot.Kind := TChartKind.Pie;
     Plot.Categories := ['A', 'B', 'C'];
     Plot.AddSeries('Only', [1, 1, 1]);
-
-    var AxisOptions := Plot.YAxis;
-    AxisOptions.Decimals := 1;
-    Plot.YAxis := AxisOptions;
+    Plot.SegmentLabelDecimals := 1;
 
     TChartRenderer.Render(Plot, FCanvas, 640, 450);
 

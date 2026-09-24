@@ -155,6 +155,9 @@ type
 
     [Test]
     procedure SegmentLabels_Default_IsCategoryAndPercentage;
+
+    [Test]
+    procedure SegmentLabelDecimals_Default_IsAutomatic;
   end;
 
   [TestFixture]
@@ -197,6 +200,9 @@ type
 
     [Test]
     procedure SetSegmentLabels_Called_FiresOnChanged;
+
+    [Test]
+    procedure SetSegmentLabelDecimals_Called_FiresOnChanged;
   end;
 
   [TestFixture]
@@ -225,6 +231,7 @@ implementation
 
 uses
   System.SysUtils,
+  Chart4D.Consts,
   Chart4D.Style,
   Chart4D.Types;
 
@@ -599,6 +606,12 @@ begin
     'A pie must keep the "Category (n%)" labels it always had until a caller opts out');
 end;
 
+procedure TChartPlotLifecycleTests.SegmentLabelDecimals_Default_IsAutomatic;
+begin
+  Assert.AreEqual(AutomaticDecimals, FPlot.SegmentLabelDecimals,
+    'A pie must keep its whole-percent labels until a caller asks for decimals');
+end;
+
 procedure TChartPlotOnChangedTests.Setup;
 begin
   FPlot := TChartPlot.Create;
@@ -679,6 +692,13 @@ end;
 procedure TChartPlotOnChangedTests.SetSegmentLabels_Called_FiresOnChanged;
 begin
   FPlot.SegmentLabels := TSegmentLabelMode.Percentage;
+
+  Assert.AreEqual(1, FChangedCount);
+end;
+
+procedure TChartPlotOnChangedTests.SetSegmentLabelDecimals_Called_FiresOnChanged;
+begin
+  FPlot.SegmentLabelDecimals := 1;
 
   Assert.AreEqual(1, FChangedCount);
 end;
