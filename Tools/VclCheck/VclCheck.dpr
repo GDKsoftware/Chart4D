@@ -21,6 +21,8 @@ program VclCheck;
 
 {$APPTYPE CONSOLE}
 
+{$R *.res}
+
 uses
   System.SysUtils,
   System.Classes,
@@ -28,7 +30,6 @@ uses
   Winapi.Windows,
   Winapi.Messages,
   Vcl.Controls,
-  Vcl.Forms,
   Vcl.Graphics,
   Winapi.GDIPAPI,
   Winapi.GDIPOBJ,
@@ -44,7 +45,8 @@ uses
   Chart4D.Hover in '..\..\Source\Chart4D.Hover.pas',
   Chart4D.View in '..\..\Source\Chart4D.View.pas',
   Chart4D.Preview in '..\..\Source\Chart4D.Preview.pas',
-  Chart4D.VCL in '..\..\Source\VCL\Chart4D.VCL.pas';
+  Chart4D.VCL in '..\..\Source\VCL\Chart4D.VCL.pas',
+  VclCheck.Form.Host in 'VclCheck.Form.Host.pas' {FormHost};
 
 type
   { SetDesigning is protected on TComponent; a descendant declaration is the usual way to
@@ -82,7 +84,9 @@ type
   /// Exposes the control's protected mouse entry points, so the hover chain from a mouse
   /// move through the hit test, the hover state and the repaint can be driven without a
   /// visible window or an OS-level mouse. Only the delivery of a real mouse message is
-  /// out of reach this way, which is the one link the VCL itself owns.
+  /// out of reach this way, which is the one link the VCL itself owns. The chart comes
+  /// from the host form's DFM, so the check casts it to this class; that is safe because
+  /// the class adds no fields and no virtual methods.
   /// </summary>
   TDrivableChart = class(TChart4D)
   public
@@ -128,15 +132,11 @@ end;
 /// </summary>
 procedure VerifyControlHoverChain;
 begin
-  { The control builds its hit map while it paints, so the check has to make it paint.
-    A form that is never shown is enough: PaintTo drives the same paint path a visible
-    window would, including the graphic control on it. }
-  const Form = TForm.CreateNew(nil);
+  const Form = TFormHost.Create(nil);
   try
     Form.SetBounds(0, 0, DefaultExportWidth, DefaultExportHeight);
 
-    const Chart = TDrivableChart.Create(Form);
-    Chart.Parent := Form;
+    const Chart = TDrivableChart(Form.Chart);
     BuildTooltipSamplePlot(Chart.Plot);
     Chart.SetBounds(0, 0, DefaultExportWidth, DefaultExportHeight);
 
@@ -252,16 +252,13 @@ end;
 /// </summary>
 procedure VerifyBackBufferCaching;
 begin
-  const Form = TForm.CreateNew(nil);
+  const Form = TFormHost.Create(nil);
   try
-    { A borderless form's client area is its whole bounds, so PaintTo output pixel-aligns
-      exactly with the chart control's own content; that is what lets the resize check
-      below compare it directly against an independent render at the same size. }
-    Form.BorderStyle := bsNone;
+    { The host form is borderless, which is what lets the resize check below compare its
+      PaintTo output directly against an independent render at the same size. }
     Form.SetBounds(0, 0, DefaultExportWidth, DefaultExportHeight);
 
-    const Chart = TChart4D.Create(Form);
-    Chart.Parent := Form;
+    const Chart = Form.Chart;
     Chart.Plot.Kind := TChartKind.Bar;
     Chart.Plot.Title := 'Life expectancy';
     Chart.Plot.Categories := ['Netherlands', 'Belgium', 'France', 'Germany'];
@@ -645,13 +642,11 @@ end;
 /// </summary>
 procedure VerifyDesignTimePreview;
 begin
-  const Form = TForm.CreateNew(nil);
+  const Form = TFormHost.Create(nil);
   try
-    Form.BorderStyle := bsNone;
     Form.SetBounds(0, 0, DefaultExportWidth, DefaultExportHeight);
 
-    const Chart = TChart4D.Create(Form);
-    Chart.Parent := Form;
+    const Chart = Form.Chart;
     Chart.SetBounds(0, 0, DefaultExportWidth, DefaultExportHeight);
 
     const RuntimeRender = TBitmap.Create;
