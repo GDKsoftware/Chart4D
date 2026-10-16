@@ -88,6 +88,7 @@ begin
   Preview.ValueLabels := Settings.ValueLabels;
   Preview.SegmentLabels := Settings.SegmentLabels;
   Preview.SegmentLabelDecimals := Settings.SegmentLabelDecimals;
+  Preview.SegmentLabelPosition := Settings.SegmentLabelPosition;
   Preview.DonutCenterText := Settings.DonutCenterText;
 end;
 

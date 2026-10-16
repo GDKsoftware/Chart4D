@@ -43,6 +43,14 @@ type
                           const LabelBackground: TAlphaColor = ChartLabelBackground): TArray<TChartHitTarget>;
     function RenderThirdsWithStyle(const Mode: TSegmentLabelMode; const Style: TChartStyle): TArray<TChartHitTarget>;
     procedure RenderThirdsWithDecimals(const SegmentLabelDecimals: Integer; const YAxis: TAxisOptions);
+    function RenderPieWithLabelsAt(const Position: TSegmentLabelPosition; const Kind: TChartKind;
+                                   const Values: TArray<Double>;
+                                   const Mode: TSegmentLabelMode = TSegmentLabelMode.CategoryAndPercentage;
+                                   const LabelBackground: TAlphaColor = ChartLabelBackground): TArray<TChartHitTarget>;
+    function DistanceFromCenter(const Call: TCanvasCall; const Circle: TChartHitTarget): Single;
+    function LabelBox(const Call: TCanvasCall): TRectF;
+    function IsOnTheRadialLine(const Point, EdgePoint, Center: TPointF): Boolean;
+    procedure AssertBendsOnlyOnItsRadialLine(const Connector: TCanvasCall; const Center: TPointF);
     function BoxlessStyleWithMinimumContrast(const MinimumContrast: Double): TChartStyle;
     function LastCallIndexOfKind(const Kind: TCanvasCallKind): Integer;
     function CountOfText(const Text: string): Integer;
@@ -111,11 +119,48 @@ type
 
     [Test]
     procedure TextContrast_CustomPalette_IsJudgedAgainstThePaletteColor;
+
+    [Test]
+    procedure SegmentLabelPosition_Outside_DrawsEveryLabelBeyondTheCircle;
+
+    [Test]
+    procedure SegmentLabelPosition_Outside_ShrinksTheCircleToMakeRoom;
+
+    [Test]
+    procedure SegmentLabelPosition_Outside_AlignsEveryLabelAwayFromTheCircle;
+
+    [Test]
+    procedure SegmentLabelPosition_Outside_JoinsEveryLabelToItsSegmentInTheSegmentColor;
+
+    [Test]
+    procedure SegmentLabelPosition_Outside_SpreadsCollidingLabelsInsteadOfDroppingThem;
+
+    [Test]
+    procedure SegmentLabelPosition_Outside_UnmovedLabelGetsOneStraightRadialLine;
+
+    [Test]
+    procedure SegmentLabelPosition_Outside_SpreadLabelNeverCoversTheCircle;
+
+    [Test]
+    procedure SegmentLabelPosition_Outside_FullColumnDropsTheSmallestSegmentsWithTheirConnectors;
+
+    [Test]
+    procedure SegmentLabelPosition_Outside_PaleSegmentGetsAConnectorInTheTextColor;
+
+    [Test]
+    procedure SegmentLabelPosition_OutsideWithoutLabels_KeepsTheFullCircle;
+
+    [Test]
+    procedure SegmentLabelPosition_OutsideDonut_DrawsEveryLabelBeyondTheRing;
+
+    [Test]
+    procedure SegmentLabelPosition_OutsideWithoutABox_KeepsTheStyleTextColor;
   end;
 
 implementation
 
 uses
+  System.Math,
   System.SysUtils,
   Chart4D.Consts,
   Chart4D.Plot,
@@ -124,6 +169,9 @@ uses
 const
   ChartWidth = 640;
   ChartHeight = 450;
+  QuarterValues: TArray<Double> = [1, 1, 1, 1];
+  QuarterLabels: TArray<string> = ['A (25%)', 'B (25%)', 'C (25%)', 'D (25%)'];
+  LabelBoxPadding = 3;
 
 procedure TSegmentLabelTests.Setup;
 begin
@@ -220,6 +268,60 @@ begin
   finally
     Plot.Free;
   end;
+end;
+
+/// <summary>
+/// Renders a pie or donut over categories A, B, C, ... with one value each, no legend and its
+/// segment labels at <c>Position</c>, and returns the hit map. Every hit target carries the
+/// circle's center and radii.
+/// </summary>
+function TSegmentLabelTests.RenderPieWithLabelsAt(const Position: TSegmentLabelPosition; const Kind: TChartKind;
+                                                  const Values: TArray<Double>; const Mode: TSegmentLabelMode;
+                                                  const LabelBackground: TAlphaColor): TArray<TChartHitTarget>;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    var Categories: TArray<string>;
+    for var Index := 0 to High(Values) do
+    begin
+      const Letter = Char(Ord('A') + Index);
+      Categories := Categories + [Letter];
+    end;
+
+    Plot.Kind := Kind;
+    Plot.LegendPosition := TLegendPosition.None;
+    Plot.Categories := Categories;
+    Plot.AddSeries('Share', Values);
+    Plot.SegmentLabels := Mode;
+    Plot.SegmentLabelPosition := Position;
+
+    var Style := Plot.Style;
+    Style.LabelBackgroundColor := LabelBackground;
+    Plot.Style := Style;
+
+    TChartRenderer.Render(Plot, FCanvas, ChartWidth, ChartHeight, Result);
+  finally
+    Plot.Free;
+  end;
+end;
+
+/// <summary>The distance from the circle's center to the point a text call is anchored on.</summary>
+function TSegmentLabelTests.DistanceFromCenter(const Call: TCanvasCall; const Circle: TChartHitTarget): Single;
+begin
+  const AnchorPoint = TPointF.Create(Call.TextX, Call.TextY);
+  Result := AnchorPoint.Distance(Circle.Center);
+end;
+
+/// <summary>
+/// The box behind a vertically centred label text call: the measured text, aligned on its
+/// anchor as the call says, grown by the label padding on every side.
+/// </summary>
+function TSegmentLabelTests.LabelBox(const Call: TCanvasCall): TRectF;
+begin
+  const TextSize = FRecordingCanvas.MeasureText(Call.Text, Call.TextStyle);
+  const Origin = TChartTextAlign.ResolveOrigin(Call.TextX, Call.TextY, TextSize, Call.AlignH, TTextAlignV.Middle);
+  Result := TRectF.Create(Origin.X - LabelBoxPadding, Origin.Y - LabelBoxPadding,
+                          Origin.X + TextSize.Width + LabelBoxPadding, Origin.Y + TextSize.Height + LabelBoxPadding);
 end;
 
 /// <summary>
@@ -493,6 +595,251 @@ begin
     'Text on the navy wedge must turn white');
   Assert.AreEqual<TAlphaColor>(ChartTextDark, SegmentLabelCall('C (33%)').TextStyle.Color,
     'Text on the pale cyan wedge must stay dark');
+end;
+
+procedure TSegmentLabelTests.SegmentLabelPosition_Outside_DrawsEveryLabelBeyondTheCircle;
+begin
+  const HitMap = RenderPieWithLabelsAt(TSegmentLabelPosition.Outside, TChartKind.Pie, QuarterValues);
+  const Circle = HitMap[0];
+
+  for var Text in QuarterLabels do
+  begin
+    const LabelCall = SegmentLabelCall(Text);
+    Assert.IsTrue(DistanceFromCenter(LabelCall, Circle) > Circle.OuterRadius,
+      Format('The label "%s" must sit outside the circle', [Text]));
+  end;
+end;
+
+procedure TSegmentLabelTests.SegmentLabelPosition_Outside_ShrinksTheCircleToMakeRoom;
+begin
+  const InsideHitMap = RenderPieWithLabelsAt(TSegmentLabelPosition.Inside, TChartKind.Pie, QuarterValues);
+  const OutsideHitMap = RenderPieWithLabelsAt(TSegmentLabelPosition.Outside, TChartKind.Pie, QuarterValues);
+
+  const IsSmaller = (OutsideHitMap[0].OuterRadius < InsideHitMap[0].OuterRadius);
+  Assert.IsTrue(IsSmaller, 'Labels outside the circle need room the circle gives up');
+end;
+
+procedure TSegmentLabelTests.SegmentLabelPosition_Outside_AlignsEveryLabelAwayFromTheCircle;
+begin
+  { Four quarters from 12 o'clock put A and B on the right half and C and D on the left. }
+  RenderPieWithLabelsAt(TSegmentLabelPosition.Outside, TChartKind.Pie, QuarterValues);
+
+  Assert.AreEqual<TTextAlignH>(TTextAlignH.Left, SegmentLabelCall(QuarterLabels[0]).AlignH);
+  Assert.AreEqual<TTextAlignH>(TTextAlignH.Left, SegmentLabelCall(QuarterLabels[1]).AlignH);
+  Assert.AreEqual<TTextAlignH>(TTextAlignH.Right, SegmentLabelCall(QuarterLabels[2]).AlignH);
+  Assert.AreEqual<TTextAlignH>(TTextAlignH.Right, SegmentLabelCall(QuarterLabels[3]).AlignH);
+end;
+
+procedure TSegmentLabelTests.SegmentLabelPosition_Outside_JoinsEveryLabelToItsSegmentInTheSegmentColor;
+begin
+  const HitMap = RenderPieWithLabelsAt(TSegmentLabelPosition.Outside, TChartKind.Pie, QuarterValues);
+  const Circle = HitMap[0];
+
+  Assert.AreEqual(4, FRecordingCanvas.CountOfKind(TCanvasCallKind.DrawPolyline), 'Every label gets one connector');
+  for var Target in HitMap do
+  begin
+    Assert.AreEqual(1, FRecordingCanvas.CountOfColor(TCanvasCallKind.DrawPolyline, Target.Info.Color),
+      Format('The connector of "%s" must take its segment''s color', [Target.Info.CategoryLabel]));
+  end;
+
+  for var Connector in FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawPolyline) do
+  begin
+    const StartPoint = Connector.Points[0];
+    const StartDistance = StartPoint.Distance(Circle.Center);
+    Assert.AreEqual(Double(Circle.OuterRadius), Double(StartDistance), 0.01,
+      'A connector must start on the edge of the circle');
+  end;
+end;
+
+procedure TSegmentLabelTests.SegmentLabelPosition_Outside_SpreadsCollidingLabelsInsteadOfDroppingThem;
+begin
+  { The 1% and 2% segments sit side by side at 12 o'clock, so their natural points are at
+    almost the same height on the same side. Inside the circle one label would have to go;
+    outside there is room to move one of them down. }
+  const HitMap = RenderPieWithLabelsAt(TSegmentLabelPosition.Outside, TChartKind.Pie, [1, 2, 97]);
+  const Center = HitMap[0].Center;
+
+  const SmallCall = SegmentLabelCall('A (1%)');
+  const LargerCall = SegmentLabelCall('B (2%)');
+  const LargestCall = SegmentLabelCall('C (97%)');
+  const SmallTextSize = FRecordingCanvas.MeasureText(SmallCall.Text, SmallCall.TextStyle);
+  const LargerTextSize = FRecordingCanvas.MeasureText(LargerCall.Text, LargerCall.TextStyle);
+  const HalfBoxes = (SmallTextSize.Height + LargerTextSize.Height) / 2 + 2 * LabelBoxPadding;
+  const Gap = Abs(SmallCall.TextY - LargerCall.TextY);
+  Assert.IsTrue(Gap >= HalfBoxes - 0.01, 'The two label boxes must not overlap');
+
+  const Connectors = FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawPolyline);
+  Assert.AreEqual(3, Length(Connectors), 'Every label keeps its connector');
+  for var Connector in Connectors do
+  begin
+    const EndPoint = Connector.Points[High(Connector.Points)];
+    const EndsAtALabel = SameValue(EndPoint.Y, SmallCall.TextY, 0.01) or
+                         SameValue(EndPoint.Y, LargerCall.TextY, 0.01) or
+                         SameValue(EndPoint.Y, LargestCall.TextY, 0.01);
+    Assert.IsTrue(EndsAtALabel, 'A connector must end at the height its label was moved to');
+    AssertBendsOnlyOnItsRadialLine(Connector, Center);
+  end;
+end;
+
+procedure TSegmentLabelTests.SegmentLabelPosition_Outside_UnmovedLabelGetsOneStraightRadialLine;
+begin
+  { Four quarters leave every label at its natural place, on the label circle along its
+    segment's mid-angle, so each connector is one straight line out of the segment. }
+  const HitMap = RenderPieWithLabelsAt(TSegmentLabelPosition.Outside, TChartKind.Pie, QuarterValues);
+  const Center = HitMap[0].Center;
+
+  const Connectors = FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawPolyline);
+  Assert.AreEqual(4, Length(Connectors));
+  for var Connector in Connectors do
+  begin
+    Assert.AreEqual(2, Length(Connector.Points), 'A label at its natural place needs no bend');
+    const StartPoint = Connector.Points[0];
+    const EndPoint = Connector.Points[1];
+    Assert.IsTrue(IsOnTheRadialLine(EndPoint, StartPoint, Center), 'The line must run along the mid-angle');
+  end;
+end;
+
+/// <summary>
+/// Whether <c>Point</c> lies on the ray from <c>Center</c> through <c>EdgePoint</c>, the
+/// radial line along a segment's mid-angle.
+/// </summary>
+function TSegmentLabelTests.IsOnTheRadialLine(const Point, EdgePoint, Center: TPointF): Boolean;
+begin
+  const Radial = EdgePoint - Center;
+  const ToPoint = Point - Center;
+  const Cross = Radial.X * ToPoint.Y - Radial.Y * ToPoint.X;
+  const Dot = Radial.X * ToPoint.X + Radial.Y * ToPoint.Y;
+  const SineOfTheAngleBetween = Cross / (Radial.Length * ToPoint.Length);
+  Result := (Abs(SineOfTheAngleBetween) < 0.001) and (Dot > 0);
+end;
+
+/// <summary>
+/// Asserts that a connector is one straight line or bends once, and that a bend sits where
+/// the segment's radial line reaches the height of the label, so the last part runs level.
+/// </summary>
+procedure TSegmentLabelTests.AssertBendsOnlyOnItsRadialLine(const Connector: TCanvasCall; const Center: TPointF);
+begin
+  const PointCount = Length(Connector.Points);
+  Assert.IsTrue((PointCount = 2) or (PointCount = 3), 'A connector bends at most once');
+  if PointCount = 2 then
+    Exit;
+
+  const EdgePoint = Connector.Points[0];
+  const CrookPoint = Connector.Points[1];
+  const EndPoint = Connector.Points[2];
+  Assert.IsTrue(IsOnTheRadialLine(CrookPoint, EdgePoint, Center), 'A bend must lie on the segment''s radial line');
+  Assert.AreEqual(Double(EndPoint.Y), Double(CrookPoint.Y), 0.01, 'After the bend the line runs level to the label');
+end;
+
+procedure TSegmentLabelTests.SegmentLabelPosition_Outside_SpreadLabelNeverCoversTheCircle;
+begin
+  { The 0.5% and 1% segments at five o'clock collide, and the column moves the 0.5% label
+    up, to a height where the circle is wider than at its natural point. Its box must then move
+    out with it rather than land on the wedge beside it. }
+  const HitMap = RenderPieWithLabelsAt(TSegmentLabelPosition.Outside, TChartKind.Pie,
+                                       [18, 27, 0.5, 1, 9, 43.5, 1], TSegmentLabelMode.Category);
+  const Circle = HitMap[0];
+
+  for var Call in FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawText) do
+  begin
+    const Box = LabelBox(Call);
+    const NearestX = EnsureRange(Circle.Center.X, Box.Left, Box.Right);
+    const NearestY = EnsureRange(Circle.Center.Y, Box.Top, Box.Bottom);
+    const NearestPoint = TPointF.Create(NearestX, NearestY);
+    Assert.IsTrue(NearestPoint.Distance(Circle.Center) >= Circle.OuterRadius,
+      Format('The box of label "%s" must stay off the circle', [Call.Text]));
+  end;
+  Assert.AreEqual(7, FRecordingCanvas.CountOfKind(TCanvasCallKind.DrawText), 'Every segment keeps its label');
+end;
+
+procedure TSegmentLabelTests.SegmentLabelPosition_Outside_FullColumnDropsTheSmallestSegmentsWithTheirConnectors;
+begin
+  { Eighty segments, forty a side, cannot all be stacked beside a 450 pixel high chart.
+    The values rise with the category number, so the smallest segments are the first ones. }
+  const Plot = TChartPlot.Create;
+  try
+    var Categories: TArray<string>;
+    var Values: TArray<Double>;
+    for var Index := 1 to 80 do
+    begin
+      const Category = Format('C%d', [Index]);
+      Categories := Categories + [Category];
+      Values := Values + [Index];
+    end;
+
+    Plot.Kind := TChartKind.Pie;
+    Plot.LegendPosition := TLegendPosition.None;
+    Plot.Categories := Categories;
+    Plot.AddSeries('Share', Values);
+    Plot.SegmentLabels := TSegmentLabelMode.Category;
+    Plot.SegmentLabelPosition := TSegmentLabelPosition.Outside;
+
+    TChartRenderer.Render(Plot, FCanvas, ChartWidth, ChartHeight);
+  finally
+    Plot.Free;
+  end;
+
+  const LabelCount = FRecordingCanvas.CountOfKind(TCanvasCallKind.DrawText);
+  Assert.IsTrue(LabelCount < 80, 'Not every label fits, so some must go');
+  Assert.AreEqual(LabelCount, FRecordingCanvas.CountOfKind(TCanvasCallKind.DrawPolyline),
+    'Every drawn label has a connector and a dropped one leaves none behind');
+  Assert.IsTrue(FRecordingCanvas.HasTextEqualTo('C80'), 'The largest segment keeps its label');
+  Assert.IsFalse(FRecordingCanvas.HasTextEqualTo('C1'), 'The smallest segment is the first to lose its label');
+end;
+
+procedure TSegmentLabelTests.SegmentLabelPosition_Outside_PaleSegmentGetsAConnectorInTheTextColor;
+begin
+  { The sixth palette color is a light grey that all but disappears on white as a thin
+    line, so its connector takes the dark text color. The other five keep their own. }
+  const HitMap = RenderPieWithLabelsAt(TSegmentLabelPosition.Outside, TChartKind.Pie, [1, 1, 1, 1, 1, 1]);
+
+  Assert.AreEqual(0, FRecordingCanvas.CountOfColor(TCanvasCallKind.DrawPolyline, ChartLightGrey),
+    'A light grey connector would be all but invisible');
+  Assert.AreEqual(1, FRecordingCanvas.CountOfColor(TCanvasCallKind.DrawPolyline, ChartTextDark));
+  for var Index := 0 to 4 do
+  begin
+    Assert.AreEqual(1, FRecordingCanvas.CountOfColor(TCanvasCallKind.DrawPolyline, HitMap[Index].Info.Color),
+      Format('The connector of "%s" must keep its segment''s color', [HitMap[Index].Info.CategoryLabel]));
+  end;
+end;
+
+procedure TSegmentLabelTests.SegmentLabelPosition_OutsideWithoutLabels_KeepsTheFullCircle;
+begin
+  const InsideHitMap = RenderPieWithLabelsAt(TSegmentLabelPosition.Inside, TChartKind.Pie, QuarterValues,
+                                             TSegmentLabelMode.None);
+  const OutsideHitMap = RenderPieWithLabelsAt(TSegmentLabelPosition.Outside, TChartKind.Pie, QuarterValues,
+                                              TSegmentLabelMode.None);
+
+  Assert.AreEqual(Double(InsideHitMap[0].OuterRadius), Double(OutsideHitMap[0].OuterRadius), 0.01,
+    'With no labels there is nothing to make room for');
+  Assert.AreEqual(0, FRecordingCanvas.CountOfKind(TCanvasCallKind.DrawPolyline), 'No label means no connector');
+end;
+
+procedure TSegmentLabelTests.SegmentLabelPosition_OutsideDonut_DrawsEveryLabelBeyondTheRing;
+begin
+  const HitMap = RenderPieWithLabelsAt(TSegmentLabelPosition.Outside, TChartKind.Donut, QuarterValues);
+  const Ring = HitMap[0];
+
+  for var Text in QuarterLabels do
+  begin
+    const LabelCall = SegmentLabelCall(Text);
+    Assert.IsTrue(DistanceFromCenter(LabelCall, Ring) > Ring.OuterRadius,
+      Format('The label "%s" must sit outside the ring', [Text]));
+  end;
+
+  const DefaultStyle = TChartStyle.Default;
+  Assert.AreEqual(Double(DefaultStyle.DonutInnerRadiusFactor * Ring.OuterRadius), Double(Ring.InnerRadius), 0.01,
+    'The hole shrinks with the ring');
+end;
+
+procedure TSegmentLabelTests.SegmentLabelPosition_OutsideWithoutABox_KeepsTheStyleTextColor;
+begin
+  { Inside, the label on the blue wedge turns white without a box. Outside it sits on the
+    white chart background, where the dark text is the one that reads. }
+  RenderPieWithLabelsAt(TSegmentLabelPosition.Outside, TChartKind.Pie, QuarterValues,
+                        TSegmentLabelMode.CategoryAndPercentage, TAlphaColors.Null);
+
+  Assert.AreEqual<TAlphaColor>(ChartTextDark, SegmentLabelCall(QuarterLabels[0]).TextStyle.Color);
 end;
 
 end.

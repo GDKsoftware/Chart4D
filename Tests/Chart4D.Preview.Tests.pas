@@ -144,6 +144,7 @@ begin
   FSettings.ValueLabels := TValueLabelMode.Extremes;
   FSettings.SegmentLabels := TSegmentLabelMode.Percentage;
   FSettings.SegmentLabelDecimals := 1;
+  FSettings.SegmentLabelPosition := TSegmentLabelPosition.Outside;
 
   TChartPreview.FillFrom(FSettings, FPreview);
 
@@ -155,6 +156,7 @@ begin
   Assert.AreEqual<TValueLabelMode>(TValueLabelMode.Extremes, FPreview.ValueLabels);
   Assert.AreEqual<TSegmentLabelMode>(TSegmentLabelMode.Percentage, FPreview.SegmentLabels);
   Assert.AreEqual(1, FPreview.SegmentLabelDecimals);
+  Assert.AreEqual<TSegmentLabelPosition>(TSegmentLabelPosition.Outside, FPreview.SegmentLabelPosition);
 end;
 
 procedure TChartPreviewTests.FillFrom_CalledTwice_KeepsTheSeriesCount;

@@ -101,6 +101,14 @@ type
   TSegmentLabelMode = (CategoryAndPercentage, Percentage, Category, None);
 
   /// <summary>
+  /// Where a <c>Pie</c> or <c>Donut</c> segment label is drawn: on its own segment, or
+  /// outside the circle, joined to its segment by a connector line. <c>Outside</c> shrinks
+  /// the circle to leave room for the labels. Default <c>Inside</c>, listed first so a
+  /// zeroed field already means the default.
+  /// </summary>
+  TSegmentLabelPosition = (Inside, Outside);
+
+  /// <summary>
   /// A single annotation drawn on top of a chart's series: a text label, a segment,
   /// an arrow, or a full-width horizontal/vertical reference line.
   /// </summary>
