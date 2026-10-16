@@ -150,6 +150,7 @@ begin
   Plot.ValueLabels := TValueLabelMode.None;
   Plot.HighlightedSeriesIndex := NoHighlightedSeries;
   Plot.DonutCenterText := '';
+  Plot.SegmentLabelPosition := TSegmentLabelPosition.Inside;
   Plot.Title := '';
   Plot.Subtitle := '';
   Plot.Source := TDemoCatalog.DefaultSource;

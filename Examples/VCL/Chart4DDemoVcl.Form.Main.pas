@@ -151,6 +151,7 @@ begin
   Chart.Plot.ValueLabels := TValueLabelMode.None;
   Chart.Plot.HighlightedSeriesIndex := NoHighlightedSeries;
   Chart.Plot.DonutCenterText := '';
+  Chart.Plot.SegmentLabelPosition := TSegmentLabelPosition.Inside;
   Chart.Plot.Title := '';
   Chart.Plot.Subtitle := '';
   Chart.Plot.Source := TDemoCatalog.DefaultSource;

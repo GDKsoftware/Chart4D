@@ -519,6 +519,7 @@ type
     property ValueLabels: TValueLabelMode ...;         // default None; see 4.12
     property SegmentLabels: TSegmentLabelMode ...;     // default CategoryAndPercentage; see 4.29
     property SegmentLabelDecimals: Integer ...;        // default AutomaticDecimals; see 4.29
+    property SegmentLabelPosition: TSegmentLabelPosition ...; // default Inside; see 4.29
     property HighlightedSeriesIndex: Integer ...;      // default -1; see 4.13
     property DonutCenterText: string ...;              // default ''; Donut only, see 4.24
     property OnChanged: TNotifyEvent ...;
@@ -1448,6 +1449,57 @@ every wedge: a label drawn right after its own wedge would be painted over by th
 one, and would still hold its place against the labels after it, so a visible label could
 be dropped for colliding with one nobody can see.
 
+With `SegmentLabelPosition = Outside` (4.29) a label leaves its wedge, and the circle makes
+room for it. The text stays exactly as above. What changes is where the label goes, how
+labels that would overlap are handled, what joins a label to its wedge, its alignment and
+its text color:
+
+- **Radius.** Before the wedges are drawn, every label is measured. `OuterRadius` becomes
+  `Min(PlotBounds.Width / 2 - RoomX, PlotBounds.Height / 2 - RoomY)`, where `RoomX` is
+  `Distance + WidestText + 2 * Padding` and `RoomY` is `Distance + TallestText / 2 +
+  Padding`, with `Distance` 30 px and `Padding` the 3 px of the label box (4.12), both at
+  the reference scale. It never drops
+  below half of `Min(PlotBounds.Width, PlotBounds.Height) / 2`; labels too wide for that
+  are clamped into the chart like any other label. With `SegmentLabels = None` there is
+  nothing to make room for, and the radius is the full one.
+- **Sides.** A label belongs to the right half when `Cos(MidAngle) >= 0` (12 and 6
+  o'clock included) and to the left half otherwise. Each half is one column of labels.
+- **Spreading.** Each label wants to sit at its natural point, `Distance` beyond the outer
+  edge along the wedge's mid-angle, on what is here called the label circle, of radius
+  `OuterRadius + Distance`. Where labels in a column would
+  overlap, they are pushed apart instead of dropped, as ECharts' `avoidLabelOverlap` and
+  Highcharts do: walking down from `PlotBounds.Top`, every box that overlaps the one above
+  moves down until it clears, then walking up from `PlotBounds.Bottom`, every box that
+  overlaps the one below moves up until it clears. Only when the boxes of a column
+  together are taller than `PlotBounds` are labels left out, smallest segment first, equal
+  values in category order, so the larger segments keep their labels as they do inside the
+  circle (`TOutsideLabelColumn`).
+- **Label.** At the height the column gave it, on the label circle, or at the distance
+  of its natural point from the vertical center line when it was moved above or below
+  that circle. Where its box would touch the circle at that point, it moves further out
+  until the box is `Padding` clear of it. The label is anchored `Padding` beyond the end
+  of the connector, vertically centred on it, left-aligned on the right half and
+  right-aligned on the left half, so the box starts where the connector ends. It is drawn
+  through the label placer like every other label, and if the placer drops it, its
+  connector is left out too.
+- **Connector.** A polyline, 1.5 px wide at the reference scale, built like Highcharts'
+  `crookedLine` connector. It starts on the outer edge at
+  the wedge's mid-angle and ends at the label. Where the wedge's radial line reaches the
+  label's height beyond the outer edge and at least half a pixel short of the label, the
+  connector bends there and runs level to the label; otherwise it is one straight line.
+  A label at its natural point is therefore joined by one straight radial line, and a
+  label moved too far for a bend by one straight slanted line. A wedge whose mid-angle is
+  level (its sine below 0.001) never bends. The connector is in `CategoryColor(i)` unless
+  that color's `ContrastRatio` against `BackgroundColor` is below 1.5, where a thin line
+  all but disappears, as the default palette's light grey does on white; such a connector
+  is drawn in `TextColor`.
+- **Text color.** The box sits on the chart background rather than on a wedge, so the
+  text is `ReadableTextColor(TextColor, Blend(LabelBackgroundColor, BackgroundColor),
+  MinimumTextContrast)`.
+
+The hit targets keep their anchor on the wedge, at the point the inside label would use,
+so the tooltip highlight stays on the segment.
+
 **Legend.** One item per category (`BuildCategoryLegendItems`, 4.8):
 `Categories[i]`/`CategoryColor(i)` (4.7), since wedge color comes from the category
 index, not a series index (there is exactly one series).
@@ -1742,6 +1794,7 @@ In `Chart4D.Types.pas`:
 {$SCOPEDENUMS ON}
 type
   TSegmentLabelMode = (CategoryAndPercentage, Percentage, Category, None);
+  TSegmentLabelPosition = (Inside, Outside);
 {$SCOPEDENUMS OFF}
 ```
 
@@ -1763,9 +1816,16 @@ number of decimals of the percentage in every mode that shows one, with the mean
 `YAxis.UseThousandSeparator`, as the tooltip does, but never `YAxis.Decimals`: a pie has no
 value axis on screen, so its decimals would be set somewhere the reader cannot see.
 
+`TChartPlot` also carries `SegmentLabelPosition: TSegmentLabelPosition`, default `Inside`,
+where the labels go: `Inside` on their own wedges, or
+`Outside`, beside the circle, each joined to its wedge by a connector, with the circle
+shrunk to make room (4.23). The default is listed first so that a zeroed field already
+means it.
+
 Whatever the mode, a label is placed and dropped by the rule of 4.23: after every wedge,
 largest segment first, skipping one that collides with a label already drawn, so a shorter
-label only lets more of them fit.
+label only lets more of them fit. Outside the circle colliding labels are spread apart
+first, and only a full column drops the smallest segments' labels (4.23).
 Other chart kinds ignore the setting.
 
 **Label background.** `TChartStyle` carries `LabelBackgroundColor: TAlphaColor`, default
@@ -1910,7 +1970,7 @@ read from the `BDS` environment variable, defaulting to
   and outer radius and within its angular span, including a case straddling the 0/360
   wraparound, and misses when outside either bound.
 - `Chart4D.Preview.Tests.pas`: `TChartPreview.FillFrom` (4.26) carries the text and layout
-  settings over, `SegmentLabels` and `SegmentLabelDecimals` among them (4.29), gives a scatter series its X values and a range series its end values,
+  settings over, `SegmentLabels`, `SegmentLabelDecimals` and `SegmentLabelPosition` among them (4.29), gives a scatter series its X values and a range series its end values,
   adds a second series for `GroupedBar`, and refilling replaces the sample instead of
   adding to it.
 - `Chart4D.View.Tests.pas`: against a `TRecordingCanvas`, `TChartView.Render` (4.25) draws on
@@ -1940,8 +2000,8 @@ read from the `BDS` environment variable, defaulting to
   `AddArrowSeries` set `Kind`/`Orientation`/`Values`/`EndValues` like `AddDumbbellSeries`;
   `AddRangeBandSeries` appends (does not clear) and sets `IsRangeBand`; `CategoryColor`
   cycles the palette by category index (4.7); `SegmentLabels` defaults to
-  `CategoryAndPercentage`, `SegmentLabelDecimals` to `AutomaticDecimals`, and setting either
-  fires `OnChanged` (4.29); and for `Palette` (4.30),
+  `CategoryAndPercentage`, `SegmentLabelDecimals` to `AutomaticDecimals`,
+  `SegmentLabelPosition` to `Inside`, and setting any of them fires `OnChanged` (4.29); and for `Palette` (4.30),
   an empty one gives `DefaultPalette` over two full cycles, a custom one colors categories in
   its own order and wraps by its own length, colors a series without its own color while a
   series' own color still wins and the highlight still mutes the others, and neither a write
@@ -2006,7 +2066,23 @@ read from the `BDS` environment variable, defaulting to
   3 keeps the dark text on the blue wedge and turns only the dark red one white, and 1 keeps
   the dark text on every wedge. With a custom `Palette` of pale yellow, navy and pale cyan
   the contrast is judged against those wedges, dark, white and dark, the other way round from
-  the default palette (4.30).
+  the default palette (4.30). On a pie of four equal segments with `SegmentLabelPosition =
+  Outside`, every label is anchored beyond the outer radius, the radius is smaller than with
+  `Inside`, the labels of the two right-hand quarters are left-aligned and those of the two
+  left-hand quarters right-aligned, and each label gets one connector in its segment's color
+  that starts on the edge of the circle. On a pie of 1%, 2% and 97% both small labels are
+  kept, their boxes do not overlap, and every connector ends at the height its label was
+  moved to and bends at most once, on its wedge's radial line, to run level to the label.
+  On the four equal segments, where no label moves, every connector is one straight line
+  along its wedge's mid-angle. On a pie of 18, 27, 0.5, 1, 9, 43.5 and 1 the 0.5% label is moved up beside the
+  circle and every box stays off the circle. On a pie of eighty segments with values 1 to
+  80, not every label fits, every drawn label has exactly one connector, the largest
+  segment keeps its label and the smallest loses it. On a pie of six equal segments the
+  light grey sixth gets a connector in the dark text color, the other five in their own.
+  With `SegmentLabels = None` the radius stays the full one and
+  no connector is drawn. A donut's labels sit outside the ring and its hole shrinks with it,
+  and with no label box the text keeps the dark style color, since it sits on the white
+  chart background rather than on the blue wedge.
 
 - `Chart4D.Catalog.Tests.pas`: for the shared demo catalogue
   (`Examples\Common\Chart4DDemo.Catalog.pas`, 7), the numbers and names parsed back out of

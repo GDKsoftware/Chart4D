@@ -105,6 +105,52 @@ const
   /// </summary>
   StaggeredCategoryLabelRowCount = 2;
 
+  /// <summary>
+  /// The clear space, in pixels at the reference scale, between a label's text and the
+  /// edge of the box behind it (see SPEC.md 4.12).
+  /// </summary>
+  LabelBoxPaddingAtReferenceScale = 3;
+
+  /// <summary>
+  /// How far, in pixels at the reference scale, an outside segment label sits beyond the
+  /// edge of the circle, measured along the segment's mid-angle: the circle the labels lie
+  /// on is this much wider than the pie (see SPEC.md 4.23).
+  /// </summary>
+  SegmentLabelDistanceAtReferenceScale = 30;
+
+  /// <summary>
+  /// The stroke width, in pixels at the reference scale, of the line that joins an outside
+  /// segment label to its segment.
+  /// </summary>
+  SegmentConnectorWidthAtReferenceScale = 1.5;
+
+  /// <summary>
+  /// The sine of a mid-angle below which a segment's radial line counts as level: it never
+  /// reaches another height, so its connector cannot bend towards a label that was moved.
+  /// </summary>
+  RadialLineLevelTolerance = 1E-3;
+
+  /// <summary>
+  /// The shortest level part, in pixels, that makes a bend in a connector worth drawing. A
+  /// label that kept its natural place would bend exactly at its own anchor; this leaves
+  /// that bend out, so its connector is one straight line.
+  /// </summary>
+  CrookMinimumLevelLength = 0.5;
+
+  /// <summary>
+  /// The contrast a connector in its segment's color must reach against the chart
+  /// background; a paler segment gets a connector in the style's text color instead, since
+  /// below this a thin line all but disappears, as a light grey does on white.
+  /// </summary>
+  MinimumConnectorContrast = 1.5;
+
+  /// <summary>
+  /// The fraction of its full radius a circle always keeps when outside segment labels
+  /// claim room around it. Labels too wide for that are clamped into the chart instead, so
+  /// a long category name never shrinks the circle to nothing.
+  /// </summary>
+  MinimumOutsideLabelRadiusFactor = 0.5;
+
 type
   /// <summary>
   /// Array shapes the renderer needs that the RTL does not provide.
@@ -180,6 +226,47 @@ type
   end;
 
   /// <summary>
+  /// A segment label drawn outside the circle: the wedge it belongs to, its text and the
+  /// height of its box, the point on the edge of the circle its connector starts from, the
+  /// point the label is anchored on when nothing is in its way (on the label circle, along
+  /// the mid-angle), which side of the circle it is on, and <c>LabelY</c>, the height its
+  /// box is centred on. <c>LabelY</c> starts at the height of the natural point and moves
+  /// only when a neighbouring label is in the way.
+  /// </summary>
+  TOutsideLabel = record
+    Wedge: TPieWedge;
+    Text: string;
+    BoxHeight: Single;
+    EdgePoint: TPointF;
+    NaturalPoint: TPointF;
+    IsOnRightHalf: Boolean;
+    LabelY: Single;
+  end;
+
+  /// <summary>
+  /// Stacks the outside labels of one side of a <c>Pie</c> or <c>Donut</c> into a column
+  /// between two heights, the way chart libraries spread pie labels: each label stays at
+  /// the height of its natural point unless that would overlap a neighbour, in which case the
+  /// neighbours are pushed apart just far enough. When the labels together are taller than
+  /// the column, the smallest segments' labels are left out first, so the larger segments
+  /// keep theirs, the same rule the labels on the segments follow.
+  /// </summary>
+  TOutsideLabelColumn = class
+  private
+    class function KeepWhatFits(const Labels: TArray<TOutsideLabel>; const Height: Single): TArray<TOutsideLabel>; static;
+    class function SortedByHeight(const Labels: TArray<TOutsideLabel>): TArray<TOutsideLabel>; static;
+    class function PushedDown(const Labels: TArray<TOutsideLabel>; const Top: Single): TArray<TOutsideLabel>; static;
+    class function PushedUp(const Labels: TArray<TOutsideLabel>; const Bottom: Single): TArray<TOutsideLabel>; static;
+
+  public
+    /// <summary>
+    /// Returns the labels that fit between <c>Top</c> and <c>Bottom</c>, ordered from top to
+    /// bottom, each with a <c>LabelY</c> at which no two boxes overlap.
+    /// </summary>
+    class function Spread(const Labels: TArray<TOutsideLabel>; const Top, Bottom: Single): TArray<TOutsideLabel>; static;
+  end;
+
+  /// <summary>
   /// Draws labels that sit on top of chart ink, each on its own box in the style's
   /// <c>LabelBackgroundColor</c>: it sizes the box around the measured text, shifts it back
   /// inside the clamp bounds when it would stick out, and remembers where every box landed
@@ -204,9 +291,9 @@ type
                               const AlignH: TTextAlignH): TRectF;
     function ClampShift(const Box: TRectF): TPointF;
     function IntersectsPlaced(const Box: TRectF): Boolean;
-    procedure Place(const AnchorPoint: TPointF; const LabelText: string;
-                    const TextStyle: TChartTextStyle; const AlignH: TTextAlignH;
-                    const SkipWhenOverlapping: Boolean);
+    function Place(const AnchorPoint: TPointF; const LabelText: string;
+                   const TextStyle: TChartTextStyle; const AlignH: TTextAlignH;
+                   const SkipWhenOverlapping: Boolean): Boolean;
   public
     /// <summary>
     /// Creates a placer that draws on <c>Canvas</c> at <c>Style.ScaleFactor</c>, fills
@@ -225,6 +312,14 @@ type
     /// </summary>
     procedure DrawIfClear(const AnchorPoint: TPointF; const LabelText: string;
                           const TextStyle: TChartTextStyle);
+
+    /// <summary>
+    /// Draws a label aligned on <c>AnchorPoint</c> by <c>AlignH</c>, clamped into bounds,
+    /// unless its box would overlap one this placer has already drawn. Returns whether the
+    /// label was drawn, so a caller can leave out what belongs to a dropped label.
+    /// </summary>
+    function TryDrawIfClear(const AnchorPoint: TPointF; const LabelText: string;
+                            const TextStyle: TChartTextStyle; const AlignH: TTextAlignH): Boolean;
   end;
 
   /// <summary>
@@ -713,16 +808,18 @@ type
 
   /// <summary>
   /// Draws a <c>Pie</c> or <c>Donut</c> chart: wedge geometry, per-segment labels using
-  /// the same overlap-avoidance rule value labels use (<c>TChartLabelPlacer</c>), the
-  /// optional donut center text, and the sector hit targets for hover. Colours and labels
-  /// by category rather than by series, and carries no value labels of its own.
+  /// the same overlap-avoidance rule value labels use (<c>TChartLabelPlacer</c>), on the
+  /// segments or outside the circle, the optional donut center text, and the sector hit
+  /// targets for hover. Colours and labels by category rather than by series, and carries
+  /// no value labels of its own.
   /// </summary>
   TCircularSeriesRenderer = class(TChartSeriesRenderer)
   private
     FLabelPlacer: TChartLabelPlacer;
 
     function Center: TPointF;
-    function OuterRadius: Single;
+    function OuterRadius(const Wedges: TArray<TPieWedge>; const Frame: TPieFrame): Single;
+    function OutsideLabelRoom(const Wedges: TArray<TPieWedge>; const Frame: TPieFrame): TSizeF;
     function InnerRadius(const OuterRadius: Single): Single;
     function Total(const Values: TArray<Double>): Double;
     function SegmentCount(const SweepAngle: Single): Integer;
@@ -731,7 +828,22 @@ type
     function BuildWedges(const Values: TArray<Double>; const Total: Double): TArray<TPieWedge>;
     function LabelOrder(const Wedges: TArray<TPieWedge>): TArray<TPieWedge>;
     procedure DrawWedge(const Wedge: TPieWedge; const Frame: TPieFrame);
-    procedure DrawWedgeLabel(const Wedge: TPieWedge; const Frame: TPieFrame);
+    procedure DrawLabels(const Wedges: TArray<TPieWedge>; const Frame: TPieFrame);
+    procedure DrawInsideLabels(const Wedges: TArray<TPieWedge>; const Frame: TPieFrame);
+    procedure DrawInsideLabel(const Wedge: TPieWedge; const Frame: TPieFrame);
+    procedure DrawOutsideLabels(const Wedges: TArray<TPieWedge>; const Frame: TPieFrame);
+    function BuildOutsideLabel(const Wedge: TPieWedge; const Frame: TPieFrame): TOutsideLabel;
+    function LabelsOnSide(const Labels: TArray<TOutsideLabel>; const IsRightSide: Boolean): TArray<TOutsideLabel>;
+    procedure DrawOutsideLabel(const OutsideLabel: TOutsideLabel; const Frame: TPieFrame);
+    function LabelReach(const OutsideLabel: TOutsideLabel; const Frame: TPieFrame): Single;
+    function ClearOfTheCircle(const OutsideLabel: TOutsideLabel; const Frame: TPieFrame): Single;
+    function TryGetCrookPoint(const OutsideLabel: TOutsideLabel; const Frame: TPieFrame; const Reach: Single;
+                              out CrookPoint: TPointF): Boolean;
+    function ConnectorColor(const Wedge: TPieWedge): TAlphaColor;
+    function IsOnRightHalf(const Wedge: TPieWedge): Boolean;
+    function OutsideLabelTextStyle: TChartTextStyle;
+    function LabelDistance: Single;
+    function LabelPadding: Single;
     function SegmentLabelText(const Wedge: TPieWedge; const Frame: TPieFrame): string;
     function SegmentLabelPoint(const Wedge: TPieWedge; const Frame: TPieFrame): TPointF;
     function SegmentLabelDistance(const InnerRadius, OuterRadius: Single; const IsDonut: Boolean): Single;
@@ -931,6 +1043,94 @@ begin
   Result := StartAngle + SweepAngle / 2;
 end;
 
+class function TOutsideLabelColumn.Spread(const Labels: TArray<TOutsideLabel>; const Top, Bottom: Single): TArray<TOutsideLabel>;
+begin
+  const Fitting = KeepWhatFits(Labels, Bottom - Top);
+  const TopToBottom = SortedByHeight(Fitting);
+  const ClearOfTheTop = PushedDown(TopToBottom, Top);
+  Result := PushedUp(ClearOfTheTop, Bottom);
+end;
+
+/// <summary>
+/// The labels whose boxes, stacked, fit in <c>Height</c>: offered largest segment first,
+/// equal values in category order, each kept when there is still room for its box.
+/// </summary>
+class function TOutsideLabelColumn.KeepWhatFits(const Labels: TArray<TOutsideLabel>;
+                                                const Height: Single): TArray<TOutsideLabel>;
+begin
+  var BySize := Copy(Labels);
+  TArray.Sort<TOutsideLabel>(BySize, TComparer<TOutsideLabel>.Construct(
+    function(const Left, Right: TOutsideLabel): Integer
+    begin
+      Result := CompareValue(Right.Wedge.Value, Left.Wedge.Value);
+      if Result = 0 then
+        Result := CompareValue(Left.Wedge.CategoryIndex, Right.Wedge.CategoryIndex);
+    end));
+
+  Result := [];
+  var UsedHeight: Single := 0;
+  for var OutsideLabel in BySize do
+  begin
+    const HasRoom = (UsedHeight + OutsideLabel.BoxHeight <= Height);
+    if not HasRoom then
+      Continue;
+
+    UsedHeight := UsedHeight + OutsideLabel.BoxHeight;
+    Result := Result + [OutsideLabel];
+  end;
+end;
+
+/// <summary>The labels from top to bottom by their wanted height, ties in category order.</summary>
+class function TOutsideLabelColumn.SortedByHeight(const Labels: TArray<TOutsideLabel>): TArray<TOutsideLabel>;
+begin
+  Result := Copy(Labels);
+  TArray.Sort<TOutsideLabel>(Result, TComparer<TOutsideLabel>.Construct(
+    function(const Left, Right: TOutsideLabel): Integer
+    begin
+      Result := CompareValue(Left.LabelY, Right.LabelY);
+      if Result = 0 then
+        Result := CompareValue(Left.Wedge.CategoryIndex, Right.Wedge.CategoryIndex);
+    end));
+end;
+
+/// <summary>
+/// Walks the column from the top down and moves every label that overlaps the one above
+/// it, or sticks out above <c>Top</c>, down until it just clears.
+/// </summary>
+class function TOutsideLabelColumn.PushedDown(const Labels: TArray<TOutsideLabel>;
+                                              const Top: Single): TArray<TOutsideLabel>;
+begin
+  Result := Copy(Labels);
+
+  var PreviousBottom := Top;
+  for var Index := 0 to High(Result) do
+  begin
+    const HalfBox = Result[Index].BoxHeight / 2;
+    Result[Index].LabelY := Max(Result[Index].LabelY, PreviousBottom + HalfBox);
+    PreviousBottom := Result[Index].LabelY + HalfBox;
+  end;
+end;
+
+/// <summary>
+/// Walks the column from the bottom up and moves every label that overlaps the one below
+/// it, or sticks out below <c>Bottom</c>, up until it just clears. After
+/// <c>PushedDown</c>, and with labels that fit the column, this never pushes a label back
+/// above the top.
+/// </summary>
+class function TOutsideLabelColumn.PushedUp(const Labels: TArray<TOutsideLabel>;
+                                            const Bottom: Single): TArray<TOutsideLabel>;
+begin
+  Result := Copy(Labels);
+
+  var NextTop := Bottom;
+  for var Index := High(Result) downto 0 do
+  begin
+    const HalfBox = Result[Index].BoxHeight / 2;
+    Result[Index].LabelY := Min(Result[Index].LabelY, NextTop - HalfBox);
+    NextTop := Result[Index].LabelY - HalfBox;
+  end;
+end;
+
 constructor TChartHitMap.Create(const DefaultRadius: Single);
 begin
   inherited Create;
@@ -1020,9 +1220,15 @@ begin
   Place(AnchorPoint, LabelText, TextStyle, TTextAlignH.Center, True);
 end;
 
-procedure TChartLabelPlacer.Place(const AnchorPoint: TPointF; const LabelText: string;
-                                  const TextStyle: TChartTextStyle; const AlignH: TTextAlignH;
-                                  const SkipWhenOverlapping: Boolean);
+function TChartLabelPlacer.TryDrawIfClear(const AnchorPoint: TPointF; const LabelText: string;
+                                          const TextStyle: TChartTextStyle; const AlignH: TTextAlignH): Boolean;
+begin
+  Result := Place(AnchorPoint, LabelText, TextStyle, AlignH, True);
+end;
+
+function TChartLabelPlacer.Place(const AnchorPoint: TPointF; const LabelText: string;
+                                 const TextStyle: TChartTextStyle; const AlignH: TTextAlignH;
+                                 const SkipWhenOverlapping: Boolean): Boolean;
 begin
   const TextSize = FCanvas.MeasureText(LabelText, TextStyle);
 
@@ -1031,7 +1237,7 @@ begin
   Background.Offset(Shift.X, Shift.Y);
 
   if SkipWhenOverlapping and IntersectsPlaced(Background) then
-    Exit;
+    Exit(False);
 
   const HasVisibleBox = (TAlphaColorRec(FBackgroundColor).A > 0);
   if HasVisibleBox then
@@ -1040,12 +1246,13 @@ begin
                    AlignH, TTextAlignV.Middle);
 
   FPlacedBoxes := FPlacedBoxes + [Background];
+  Result := True;
 end;
 
 function TChartLabelPlacer.BackgroundBounds(const AnchorPoint: TPointF; const TextSize: TSizeF;
                                             const AlignH: TTextAlignH): TRectF;
 begin
-  const Padding = 3 * FScaleFactor;
+  const Padding = LabelBoxPaddingAtReferenceScale * FScaleFactor;
   const Origin = TChartTextAlign.ResolveOrigin(AnchorPoint.X, AnchorPoint.Y, TextSize,
                                                AlignH, TTextAlignV.Middle);
 
@@ -2499,12 +2706,15 @@ begin
 
   var Frame: TPieFrame;
   Frame.Center := Center;
-  Frame.OuterRadius := OuterRadius;
-  Frame.InnerRadius := InnerRadius(Frame.OuterRadius);
   Frame.IsDonut := (FPlot.Kind = TChartKind.Donut);
   Frame.Total := Total(PieSeries.Values);
 
   const Wedges = BuildWedges(PieSeries.Values, Frame.Total);
+
+  { The radius comes after the wedges: outside labels need room around the circle, and
+    how much depends on the text of the labels, which depends on the wedges. }
+  Frame.OuterRadius := OuterRadius(Wedges, Frame);
+  Frame.InnerRadius := InnerRadius(Frame.OuterRadius);
 
   { Every wedge before any label: a label drawn right after its own wedge would be painted
     over by the next one, and would still hold its place against the labels after it. }
@@ -2513,10 +2723,7 @@ begin
 
   const HasSegmentLabels = (FPlot.SegmentLabels <> TSegmentLabelMode.None);
   if HasSegmentLabels then
-  begin
-    for var Wedge in LabelOrder(Wedges) do
-      DrawWedgeLabel(Wedge, Frame);
-  end;
+    DrawLabels(Wedges, Frame);
 
   if Frame.IsDonut then
     DrawCenterText(Frame.Center);
@@ -2551,9 +2758,45 @@ begin
   Result := FGeometry.PlotBounds.CenterPoint;
 end;
 
-function TCircularSeriesRenderer.OuterRadius: Single;
+/// <summary>
+/// The radius the circle is drawn at: as large as the plot area allows, less the room
+/// outside labels claim on every side, but never below
+/// <c>MinimumOutsideLabelRadiusFactor</c> of the full radius.
+/// </summary>
+function TCircularSeriesRenderer.OuterRadius(const Wedges: TArray<TPieWedge>; const Frame: TPieFrame): Single;
 begin
-  Result := Min(FGeometry.PlotBounds.Width, FGeometry.PlotBounds.Height) / 2;
+  const Bounds = FGeometry.PlotBounds;
+  Result := Min(Bounds.Width, Bounds.Height) / 2;
+
+  const HasOutsideLabels = (FPlot.SegmentLabelPosition = TSegmentLabelPosition.Outside) and
+                           (FPlot.SegmentLabels <> TSegmentLabelMode.None);
+  if not HasOutsideLabels then
+    Exit;
+
+  const Room = OutsideLabelRoom(Wedges, Frame);
+  const FittingRadius = Min(Bounds.Width / 2 - Room.Width, Bounds.Height / 2 - Room.Height);
+  Result := Max(FittingRadius, MinimumOutsideLabelRadiusFactor * Result);
+end;
+
+/// <summary>
+/// The room an outside label needs beyond the circle: sideways, the label distance and the
+/// widest label box; up and down, the label distance and half the tallest label box, since
+/// a label is centred on the end of its connector.
+/// </summary>
+function TCircularSeriesRenderer.OutsideLabelRoom(const Wedges: TArray<TPieWedge>; const Frame: TPieFrame): TSizeF;
+begin
+  var WidestText: Single := 0;
+  var TallestText: Single := 0;
+  for var Wedge in Wedges do
+  begin
+    const LabelText = SegmentLabelText(Wedge, Frame);
+    const TextSize = FCanvas.MeasureText(LabelText, OutsideLabelTextStyle);
+    WidestText := Max(WidestText, TextSize.Width);
+    TallestText := Max(TallestText, TextSize.Height);
+  end;
+
+  Result.Width  := LabelDistance + WidestText + 2 * LabelPadding;
+  Result.Height := LabelDistance + TallestText / 2 + LabelPadding;
 end;
 
 function TCircularSeriesRenderer.InnerRadius(const OuterRadius: Single): Single;
@@ -2627,10 +2870,236 @@ begin
   FHitMap.AddSector(Frame.Center, Frame.InnerRadius, Frame.OuterRadius, Wedge.StartAngle, Wedge.SweepAngle, Info);
 end;
 
-procedure TCircularSeriesRenderer.DrawWedgeLabel(const Wedge: TPieWedge; const Frame: TPieFrame);
+procedure TCircularSeriesRenderer.DrawLabels(const Wedges: TArray<TPieWedge>; const Frame: TPieFrame);
+begin
+  case FPlot.SegmentLabelPosition of
+    TSegmentLabelPosition.Inside  : DrawInsideLabels(Wedges, Frame);
+    TSegmentLabelPosition.Outside : DrawOutsideLabels(Wedges, Frame);
+  else
+    raise ENotSupportedException.CreateFmt('Unsupported segment label position: %d', [Ord(FPlot.SegmentLabelPosition)]);
+  end;
+end;
+
+procedure TCircularSeriesRenderer.DrawInsideLabels(const Wedges: TArray<TPieWedge>; const Frame: TPieFrame);
+begin
+  for var Wedge in LabelOrder(Wedges) do
+  begin
+    DrawInsideLabel(Wedge, Frame);
+  end;
+end;
+
+procedure TCircularSeriesRenderer.DrawInsideLabel(const Wedge: TPieWedge; const Frame: TPieFrame);
 begin
   DrawSegmentLabel(SegmentLabelPoint(Wedge, Frame), SegmentLabelText(Wedge, Frame),
                    FPlot.CategoryColor(Wedge.CategoryIndex));
+end;
+
+/// <summary>
+/// Draws the labels beside the circle. Each side of the circle is one column: labels that
+/// would overlap there are spread apart rather than dropped, and only when a column is full
+/// do the smallest segments lose their labels (<c>TOutsideLabelColumn</c>).
+/// </summary>
+procedure TCircularSeriesRenderer.DrawOutsideLabels(const Wedges: TArray<TPieWedge>; const Frame: TPieFrame);
+begin
+  var Labels: TArray<TOutsideLabel>;
+  for var Wedge in Wedges do
+  begin
+    const OutsideLabel = BuildOutsideLabel(Wedge, Frame);
+    Labels := Labels + [OutsideLabel];
+  end;
+
+  const Bounds = FGeometry.PlotBounds;
+  const RightLabels = LabelsOnSide(Labels, True);
+  const LeftLabels = LabelsOnSide(Labels, False);
+  const RightColumn = TOutsideLabelColumn.Spread(RightLabels, Bounds.Top, Bounds.Bottom);
+  const LeftColumn = TOutsideLabelColumn.Spread(LeftLabels, Bounds.Top, Bounds.Bottom);
+
+  for var OutsideLabel in RightColumn + LeftColumn do
+  begin
+    DrawOutsideLabel(OutsideLabel, Frame);
+  end;
+end;
+
+function TCircularSeriesRenderer.BuildOutsideLabel(const Wedge: TPieWedge; const Frame: TPieFrame): TOutsideLabel;
+begin
+  Result.Wedge := Wedge;
+  Result.Text := SegmentLabelText(Wedge, Frame);
+
+  const TextSize = FCanvas.MeasureText(Result.Text, OutsideLabelTextStyle);
+  Result.BoxHeight := TextSize.Height + 2 * LabelPadding;
+
+  Result.EdgePoint := PointAtAngle(Frame.Center, Frame.OuterRadius, Wedge.MidAngle);
+  Result.NaturalPoint := PointAtAngle(Frame.Center, Frame.OuterRadius + LabelDistance, Wedge.MidAngle);
+  Result.IsOnRightHalf := IsOnRightHalf(Wedge);
+  Result.LabelY := Result.NaturalPoint.Y;
+end;
+
+function TCircularSeriesRenderer.LabelsOnSide(const Labels: TArray<TOutsideLabel>;
+                                              const IsRightSide: Boolean): TArray<TOutsideLabel>;
+begin
+  Result := [];
+  for var OutsideLabel in Labels do
+  begin
+    if OutsideLabel.IsOnRightHalf = IsRightSide then
+      Result := Result + [OutsideLabel];
+  end;
+end;
+
+/// <summary>
+/// Draws one label beside the circle. The label sits on the label circle at the height the
+/// column gave it (<c>LabelReach</c>), or further out where that is needed to keep its box
+/// off the circle (<c>ClearOfTheCircle</c>), left-aligned on the right half and
+/// right-aligned on the left half. Its connector runs from the edge of the segment along
+/// the mid-angle and bends level towards the label where that radial line reaches the
+/// label's height (<c>TryGetCrookPoint</c>); a label that kept its natural place is joined
+/// by one straight radial line, and one that has no such bend by one straight slanted
+/// line. If the placer drops the label, its connector is left out too.
+/// </summary>
+procedure TCircularSeriesRenderer.DrawOutsideLabel(const OutsideLabel: TOutsideLabel; const Frame: TPieFrame);
+begin
+  var Direction: Single;
+  var AlignH: TTextAlignH;
+  if OutsideLabel.IsOnRightHalf then
+  begin
+    Direction := 1;
+    AlignH := TTextAlignH.Left;
+  end
+  else
+  begin
+    Direction := -1;
+    AlignH := TTextAlignH.Right;
+  end;
+
+  const CircleReach = LabelReach(OutsideLabel, Frame);
+  const CircleClearance = ClearOfTheCircle(OutsideLabel, Frame);
+  const Reach = Max(CircleReach, CircleClearance);
+  const EndPoint = TPointF.Create(Frame.Center.X + Direction * Reach, OutsideLabel.LabelY);
+  const AnchorPoint = TPointF.Create(EndPoint.X + Direction * LabelPadding, EndPoint.Y);
+
+  const IsDrawn = FLabelPlacer.TryDrawIfClear(AnchorPoint, OutsideLabel.Text, OutsideLabelTextStyle, AlignH);
+  if not IsDrawn then
+    Exit;
+
+  var ConnectorPoints: TArray<TPointF> := [OutsideLabel.EdgePoint];
+  var CrookPoint: TPointF;
+  if TryGetCrookPoint(OutsideLabel, Frame, Reach, CrookPoint) then
+    ConnectorPoints := ConnectorPoints + [CrookPoint];
+  ConnectorPoints := ConnectorPoints + [EndPoint];
+
+  const LineColor = ConnectorColor(OutsideLabel.Wedge);
+  const LineWidth = SegmentConnectorWidthAtReferenceScale * FStyle.ScaleFactor;
+  FCanvas.DrawPolyline(ConnectorPoints, LineColor, LineWidth);
+end;
+
+/// <summary>
+/// How far from the circle's vertical center line a label sits on the label circle, the
+/// circle <c>LabelDistance</c> wider than the pie, at the height the column gave it. A
+/// label moved above or below that circle keeps the distance of its natural point.
+/// </summary>
+function TCircularSeriesRenderer.LabelReach(const OutsideLabel: TOutsideLabel; const Frame: TPieFrame): Single;
+begin
+  const NaturalOffset = OutsideLabel.NaturalPoint.X - Frame.Center.X;
+  Result := Abs(NaturalOffset);
+
+  const LabelRadius = Frame.OuterRadius + LabelDistance;
+  const DistanceToCenter = Abs(OutsideLabel.LabelY - Frame.Center.Y);
+  const IsBesideTheLabelCircle = (DistanceToCenter < LabelRadius);
+  if not IsBesideTheLabelCircle then
+    Exit;
+
+  const LabelCircleHalfWidth = Sqrt(Sqr(LabelRadius) - Sqr(DistanceToCenter));
+  Result := Max(Result, LabelCircleHalfWidth);
+end;
+
+/// <summary>
+/// The point where the segment's radial line, running out of the circle along its
+/// mid-angle, reaches the height of the label: where the connector bends to run level to
+/// the label. There is a bend only when that point lies beyond the edge of the circle and
+/// clearly short of the label, <c>Reach</c> from the center line; otherwise the connector
+/// runs straight from the edge to the label.
+/// </summary>
+function TCircularSeriesRenderer.TryGetCrookPoint(const OutsideLabel: TOutsideLabel; const Frame: TPieFrame;
+                                                  const Reach: Single; out CrookPoint: TPointF): Boolean;
+begin
+  CrookPoint := Default(TPointF);
+
+  const Angle = DegToRad(OutsideLabel.Wedge.MidAngle);
+  const VerticalPart = Sin(Angle);
+  const IsLevel = SameValue(VerticalPart, 0, RadialLineLevelTolerance);
+  if IsLevel then
+    Exit(False);
+
+  const DistanceAlongRadius = (OutsideLabel.LabelY - Frame.Center.Y) / VerticalPart;
+  const CrookX = Frame.Center.X + Cos(Angle) * DistanceAlongRadius;
+  const CrookReach = Abs(CrookX - Frame.Center.X);
+
+  const IsBeyondTheEdge = (DistanceAlongRadius > Frame.OuterRadius);
+  const IsShortOfTheLabel = (CrookReach < Reach - CrookMinimumLevelLength);
+  Result := IsBeyondTheEdge and IsShortOfTheLabel;
+  if Result then
+    CrookPoint := TPointF.Create(CrookX, OutsideLabel.LabelY);
+end;
+
+/// <summary>
+/// How far from the circle's vertical center line a label's box has to start to stay one
+/// label padding clear of the circle, at the height the column gave the label: the
+/// half-width of the circle grown by that padding, taken at the edge of the box nearest
+/// the center. Zero for a box entirely above or below that grown circle.
+/// </summary>
+function TCircularSeriesRenderer.ClearOfTheCircle(const OutsideLabel: TOutsideLabel; const Frame: TPieFrame): Single;
+begin
+  const KeepOutRadius = Frame.OuterRadius + LabelPadding;
+  const HalfBox = OutsideLabel.BoxHeight / 2;
+  const DistanceToCenter = Abs(OutsideLabel.LabelY - Frame.Center.Y);
+  const NearestEdgeDistance = Max(0, DistanceToCenter - HalfBox);
+
+  const IsBesideTheCircle = (NearestEdgeDistance < KeepOutRadius);
+  if not IsBesideTheCircle then
+    Exit(0);
+
+  Result := Sqrt(Sqr(KeepOutRadius) - Sqr(NearestEdgeDistance));
+end;
+
+/// <summary>
+/// The segment's own color, unless it is too pale to see against the chart background
+/// (below <c>MinimumConnectorContrast</c>), in which case the style's text color.
+/// </summary>
+function TCircularSeriesRenderer.ConnectorColor(const Wedge: TPieWedge): TAlphaColor;
+begin
+  Result := FPlot.CategoryColor(Wedge.CategoryIndex);
+
+  const Contrast = TChartColors.ContrastRatio(Result, FStyle.BackgroundColor);
+  const IsTooPale = (Contrast < MinimumConnectorContrast);
+  if IsTooPale then
+    Result := FStyle.TextColor;
+end;
+
+function TCircularSeriesRenderer.IsOnRightHalf(const Wedge: TPieWedge): Boolean;
+begin
+  const MidAngleRadians = DegToRad(Wedge.MidAngle);
+  Result := (Cos(MidAngleRadians) >= 0);
+end;
+
+/// <summary>
+/// The text style of an outside label. Its box sits on the chart background rather than on
+/// a wedge, so the style's text color is kept while it reads well enough against the box
+/// composited over that background.
+/// </summary>
+function TCircularSeriesRenderer.OutsideLabelTextStyle: TChartTextStyle;
+begin
+  const Behind = TChartColors.Blend(FStyle.LabelBackgroundColor, FStyle.BackgroundColor);
+  const TextColor = TChartColors.ReadableTextColor(FStyle.TextColor, Behind, FStyle.MinimumTextContrast);
+  Result := TChartTextStyle.Create(FStyle.FontName, FStyle.AxisFontSize, False, TextColor);
+end;
+
+function TCircularSeriesRenderer.LabelDistance: Single;
+begin
+  Result := SegmentLabelDistanceAtReferenceScale * FStyle.ScaleFactor;
+end;
+
+function TCircularSeriesRenderer.LabelPadding: Single;
+begin
+  Result := LabelBoxPaddingAtReferenceScale * FStyle.ScaleFactor;
 end;
 
 function TCircularSeriesRenderer.SegmentLabelText(const Wedge: TPieWedge; const Frame: TPieFrame): string;

@@ -876,6 +876,27 @@ begin
         Plot.Categories := ElectricitySources;
         Plot.AddSeries('Generation', ElectricityValues);
         Plot.DonutCenterText := '121.9 TWh';
+      end),
+
+    Sample('Donut, labels outside',
+      'The same donut with every label beside the ring, joined to its segment by a ' +
+      'line. The ring gives up some of its size, and in return a label does not have ' +
+      'to fit on a narrow segment.',
+      'Where Dutch electricity came from', 'Generation by source, 2020, TWh', EmberSource,
+      DeclareStringArray('Sources', ElectricitySources) +
+      DeclareDoubleArray('TWh', ElectricityValues, 1),
+      ['  Plot.Kind := TChartKind.Donut;',
+       '  Plot.Categories := Sources;',
+       '  Plot.AddSeries(''Generation'', TWh);',
+       '  Plot.DonutCenterText := ''121.9 TWh'';',
+       '  Plot.SegmentLabelPosition := TSegmentLabelPosition.Outside;'],
+      procedure(const Plot: TChartPlot)
+      begin
+        Plot.Kind := TChartKind.Donut;
+        Plot.Categories := ElectricitySources;
+        Plot.AddSeries('Generation', ElectricityValues);
+        Plot.DonutCenterText := '121.9 TWh';
+        Plot.SegmentLabelPosition := TSegmentLabelPosition.Outside;
       end)
   ];
 end;

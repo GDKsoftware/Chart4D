@@ -123,6 +123,17 @@ Plot.SegmentLabelDecimals := 1;                      // 70.4%; whole percents by
 
 Where two segment labels would collide, the larger segment keeps its label.
 
+To put the labels beside the circle instead, each joined to its segment by a line in the
+segment's color:
+
+```pascal
+Plot.SegmentLabelPosition := TSegmentLabelPosition.Outside;  // Inside by default
+```
+
+The circle shrinks to make room for the labels. Labels that would overlap are moved apart
+instead of dropped; only when a side of the circle is full do the smallest segments lose
+theirs.
+
 Labels sit on an opaque white box by default. The box color is part of the style, and a
 transparent one puts the text straight on the ink:
 

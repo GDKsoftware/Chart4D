@@ -52,6 +52,7 @@ type
     FValueLabels: TValueLabelMode;
     FSegmentLabels: TSegmentLabelMode;
     FSegmentLabelDecimals: Integer;
+    FSegmentLabelPosition: TSegmentLabelPosition;
     FHighlightedSeriesIndex: Integer;
     FDonutCenterText: string;
     FOnChanged: TNotifyEvent;
@@ -74,6 +75,7 @@ type
     procedure SetValueLabels(const Value: TValueLabelMode);
     procedure SetSegmentLabels(const Value: TSegmentLabelMode);
     procedure SetSegmentLabelDecimals(const Value: Integer);
+    procedure SetSegmentLabelPosition(const Value: TSegmentLabelPosition);
     procedure SetHighlightedSeriesIndex(const Value: Integer);
     procedure SetDonutCenterText(const Value: string);
 
@@ -232,6 +234,12 @@ type
     /// </summary>
     property SegmentLabelDecimals: Integer read FSegmentLabelDecimals write SetSegmentLabelDecimals;
     /// <summary>
+    /// Where a <c>Pie</c> or <c>Donut</c> segment label is drawn. Default <c>Inside</c>, on
+    /// the segment itself. <c>Outside</c> puts every label beside the circle, joined to its
+    /// segment by a line in the segment's color, and shrinks the circle so the labels fit.
+    /// </summary>
+    property SegmentLabelPosition: TSegmentLabelPosition read FSegmentLabelPosition write SetSegmentLabelPosition;
+    /// <summary>
     /// The index of the series drawn in its own color while every other series is muted
     /// to <c>ChartLightGrey</c>, or -1 (default) to draw every series in its own color.
     /// </summary>
@@ -324,6 +332,7 @@ begin
   FValueLabels := TValueLabelMode.None;
   FSegmentLabels := TSegmentLabelMode.CategoryAndPercentage;
   FSegmentLabelDecimals := AutomaticDecimals;
+  FSegmentLabelPosition := TSegmentLabelPosition.Inside;
   FHighlightedSeriesIndex := -1;
 end;
 
@@ -659,6 +668,12 @@ end;
 procedure TChartPlot.SetSegmentLabelDecimals(const Value: Integer);
 begin
   FSegmentLabelDecimals := Value;
+  NotifyChanged;
+end;
+
+procedure TChartPlot.SetSegmentLabelPosition(const Value: TSegmentLabelPosition);
+begin
+  FSegmentLabelPosition := Value;
   NotifyChanged;
 end;
 

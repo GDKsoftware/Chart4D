@@ -158,6 +158,9 @@ type
 
     [Test]
     procedure SegmentLabelDecimals_Default_IsAutomatic;
+
+    [Test]
+    procedure SegmentLabelPosition_Default_IsInside;
   end;
 
   [TestFixture]
@@ -203,6 +206,9 @@ type
 
     [Test]
     procedure SetSegmentLabelDecimals_Called_FiresOnChanged;
+
+    [Test]
+    procedure SetSegmentLabelPosition_Called_FiresOnChanged;
   end;
 
   [TestFixture]
@@ -612,6 +618,12 @@ begin
     'A pie must keep its whole-percent labels until a caller asks for decimals');
 end;
 
+procedure TChartPlotLifecycleTests.SegmentLabelPosition_Default_IsInside;
+begin
+  Assert.AreEqual<TSegmentLabelPosition>(TSegmentLabelPosition.Inside, FPlot.SegmentLabelPosition,
+    'A pie must keep its labels on the segments until a caller moves them outside');
+end;
+
 procedure TChartPlotOnChangedTests.Setup;
 begin
   FPlot := TChartPlot.Create;
@@ -699,6 +711,13 @@ end;
 procedure TChartPlotOnChangedTests.SetSegmentLabelDecimals_Called_FiresOnChanged;
 begin
   FPlot.SegmentLabelDecimals := 1;
+
+  Assert.AreEqual(1, FChangedCount);
+end;
+
+procedure TChartPlotOnChangedTests.SetSegmentLabelPosition_Called_FiresOnChanged;
+begin
+  FPlot.SegmentLabelPosition := TSegmentLabelPosition.Outside;
 
   Assert.AreEqual(1, FChangedCount);
 end;
