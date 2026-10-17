@@ -495,23 +495,86 @@ type
   end;
 
   /// <summary>
+  /// How a data coordinate becomes a pixel in one render pass, as plain data: the
+  /// orientation, the value-axis mapping with its logarithm, and either the continuous X
+  /// mapping or the category bands. <c>TChartGeometry</c> fills it and draws with it, and
+  /// <c>TChartCoordinates</c> keeps a copy for the application, so the chart and anything
+  /// drawn on top of it share one rule.
+  /// </summary>
+  TChartCoordinateMapping = record
+    IsHorizontal: Boolean;
+    IsContinuousX: Boolean;
+    IsLogarithmic: Boolean;
+    LogBase: Double;
+    ValueMapper: TLinearMapper;
+    XMapper: TLinearMapper;
+    CategoryStart: Single;
+    CategoryBand: Single;
+
+    /// <summary>
+    /// Maps a data value to its pixel on the value axis, through the logarithm first when
+    /// the value axis is logarithmic. A value at or below zero has no place on a
+    /// logarithmic scale and is pinned to the bottom of the range.
+    /// </summary>
+    function MapValue(const Value: Double): Single;
+    /// <summary>Maps an X coordinate to its pixel on a continuous X axis.</summary>
+    function MapX(const Value: Double): Single;
+    /// <summary>The pixel at the centre of the band of category <c>Index</c>.</summary>
+    function CategoryCenter(const Index: Integer): Single;
+    /// <summary>
+    /// The pixel of a category-axis coordinate expressed as a <c>Double</c>: an X value
+    /// on a continuous axis, or a 0-based category index on a discrete one.
+    /// </summary>
+    function CategoryAxisPixel(const Coordinate: Double): Single;
+    /// <summary>
+    /// The pixel of a 0-based category index on the category bands, fractional indices
+    /// included: 0 is the middle of the first band, 0.5 the edge between the first two.
+    /// </summary>
+    function CategoryBandPixel(const Coordinate: Double): Single;
+    /// <summary>Combines a category-axis pixel and a data value into a screen point.</summary>
+    function CategoryValuePoint(const CategoryPixel: Single; const Value: Double): TPointF;
+    /// <summary>The screen point of the category-axis coordinate <c>X</c> and the value <c>Y</c>.</summary>
+    function PointAt(const X, Y: Double): TPointF;
+  end;
+
+  /// <summary>
+  /// The data coordinates of a finished render, handed to the application in
+  /// <c>TChartRenderLayout.Coordinates</c>: a copy of the render's
+  /// <c>TChartCoordinateMapping</c> behind <c>IChartCoordinates</c>, or, for a plot with no
+  /// series, nothing to map onto.
+  /// </summary>
+  TChartCoordinates = class(TInterfacedObject, IChartCoordinates)
+  private
+    FMapping: TChartCoordinateMapping;
+    FIsLaidOut: Boolean;
+
+    procedure GuardLaidOut;
+
+  public
+    /// <summary>Coordinates that map exactly as <c>Mapping</c> does.</summary>
+    constructor Create(const Mapping: TChartCoordinateMapping);
+    /// <summary>Coordinates of a render that laid nothing out, which raise when used.</summary>
+    constructor CreateNotLaidOut;
+
+    function XToPixel(const X: Double): Single;
+    function YToPixel(const Y: Double): Single;
+    function PointAt(const X, Y: Double): TPointF;
+  end;
+
+  /// <summary>
   /// The pixel geometry of one render pass: where the plot area is, and how a data
   /// coordinate becomes a point inside it. Everything that has to turn values into
   /// pixels goes through this one object, so the orientation rule ("which screen axis is
   /// the value axis") is applied in a single place instead of being re-decided at every
-  /// drawing site.
+  /// drawing site. The rule itself is <c>TChartCoordinateMapping</c>, which the
+  /// application gets a copy of.
   /// </summary>
   TChartGeometry = class
   private
     FPlot: TChartPlot;
-    FIsHorizontal: Boolean;
-    FIsContinuousX: Boolean;
+    FMapping: TChartCoordinateMapping;
     FPlotBounds: TRectF;
-    FValueMapper: TLinearMapper;
-    FXMapper: TLinearMapper;
     FCategoryCount: Integer;
-    FCategoryStart: Single;
-    FCategoryBand: Single;
 
     procedure BuildValueMapper(const ValueRange: TValueRange);
     procedure BuildCategoryMapper;
@@ -530,11 +593,7 @@ type
     /// </summary>
     procedure Build(const PlotBounds: TRectF; const ValueRange, XRange: TValueRange);
 
-    /// <summary>
-    /// Maps a data value to its pixel on the value axis, through the logarithm first when
-    /// the value axis is logarithmic. A value at or below zero has no place on a
-    /// logarithmic scale and is pinned to the bottom of the range.
-    /// </summary>
+    /// <summary>The value-axis pixel of <c>Value</c>; see <c>TChartCoordinateMapping.MapValue</c>.</summary>
     function MapValue(const Value: Double): Single;
     /// <summary>Maps an X coordinate to its pixel on a continuous X axis.</summary>
     function MapX(const Value: Double): Single;
@@ -581,15 +640,17 @@ type
     class function BandPolygonPoints(const LowPoints, HighPoints: TArray<TPointF>): TArray<TPointF>; static;
 
     /// <summary>Whether the categories run down the screen instead of across it.</summary>
-    property IsHorizontal: Boolean read FIsHorizontal;
+    property IsHorizontal: Boolean read FMapping.IsHorizontal;
     /// <summary>Whether the category axis is a continuous X axis rather than discrete bands.</summary>
-    property IsContinuousX: Boolean read FIsContinuousX;
+    property IsContinuousX: Boolean read FMapping.IsContinuousX;
     /// <summary>The laid-out plot area.</summary>
     property PlotBounds: TRectF read FPlotBounds;
     /// <summary>The number of discrete categories, 0 on a continuous-X plot.</summary>
     property CategoryCount: Integer read FCategoryCount;
     /// <summary>The pixel width of one category band.</summary>
-    property CategoryBand: Single read FCategoryBand;
+    property CategoryBand: Single read FMapping.CategoryBand;
+    /// <summary>The coordinate rule this geometry draws with, once <c>Build</c> has run.</summary>
+    property Mapping: TChartCoordinateMapping read FMapping;
   end;
 
   /// <summary>
@@ -1019,6 +1080,11 @@ type
   public
     constructor Create(const Plot: TChartPlot; const Canvas: IChartCanvas; const Width, Height: Single);
     destructor Destroy; override;
+    /// <summary>
+    /// The data coordinates of this render, mapping as its geometry did, or coordinates
+    /// that raise when used for a plot with no series, which builds no geometry.
+    /// </summary>
+    function Coordinates: IChartCoordinates;
     procedure Execute;
 
     property HitMap: TChartHitMap read FHitMap;
@@ -1856,13 +1922,103 @@ begin
   FCanvas.FillPolygon([EndPoint, LeftWing, RightWing], Color);
 end;
 
+function TChartCoordinateMapping.MapValue(const Value: Double): Single;
+begin
+  if not IsLogarithmic then
+    Exit(ValueMapper.Map(Value));
+
+  const HasNoLogSpaceValue = (Value <= 0);
+  if HasNoLogSpaceValue then
+    Exit(ValueMapper.Map(ValueMapper.DataMin));
+
+  const LogValue = LogN(LogBase, Value);
+  Result := ValueMapper.Map(LogValue);
+end;
+
+function TChartCoordinateMapping.MapX(const Value: Double): Single;
+begin
+  Result := XMapper.Map(Value);
+end;
+
+function TChartCoordinateMapping.CategoryCenter(const Index: Integer): Single;
+begin
+  Result := CategoryBandPixel(Index);
+end;
+
+function TChartCoordinateMapping.CategoryAxisPixel(const Coordinate: Double): Single;
+begin
+  if IsContinuousX then
+    Result := MapX(Coordinate)
+  else
+    Result := CategoryBandPixel(Coordinate);
+end;
+
+function TChartCoordinateMapping.CategoryBandPixel(const Coordinate: Double): Single;
+begin
+  Result := CategoryStart + (Coordinate + 0.5) * CategoryBand;
+end;
+
+function TChartCoordinateMapping.CategoryValuePoint(const CategoryPixel: Single; const Value: Double): TPointF;
+begin
+  const ValuePixel = MapValue(Value);
+  if IsHorizontal then
+    Result := TPointF.Create(ValuePixel, CategoryPixel)
+  else
+    Result := TPointF.Create(CategoryPixel, ValuePixel);
+end;
+
+function TChartCoordinateMapping.PointAt(const X, Y: Double): TPointF;
+begin
+  const CategoryPixel = CategoryAxisPixel(X);
+  Result := CategoryValuePoint(CategoryPixel, Y);
+end;
+
+constructor TChartCoordinates.Create(const Mapping: TChartCoordinateMapping);
+begin
+  inherited Create;
+  FMapping := Mapping;
+  FIsLaidOut := True;
+end;
+
+constructor TChartCoordinates.CreateNotLaidOut;
+begin
+  inherited Create;
+  FIsLaidOut := False;
+end;
+
+function TChartCoordinates.XToPixel(const X: Double): Single;
+begin
+  GuardLaidOut;
+  Result := FMapping.CategoryAxisPixel(X);
+end;
+
+function TChartCoordinates.YToPixel(const Y: Double): Single;
+begin
+  GuardLaidOut;
+  Result := FMapping.MapValue(Y);
+end;
+
+function TChartCoordinates.PointAt(const X, Y: Double): TPointF;
+begin
+  GuardLaidOut;
+  Result := FMapping.PointAt(X, Y);
+end;
+
+procedure TChartCoordinates.GuardLaidOut;
+begin
+  if not FIsLaidOut then
+    raise EChart4DException.Create(SCoordinatesNotLaidOut);
+end;
+
 constructor TChartGeometry.Create(const Plot: TChartPlot; const CategoryCount: Integer);
 begin
   inherited Create;
   FPlot := Plot;
-  FIsHorizontal := (Plot.Orientation = TChartOrientation.Horizontal);
-  FIsContinuousX := TChartKindTraits.UsesContinuousX(Plot.Kind);
   FCategoryCount := CategoryCount;
+  FMapping.IsHorizontal := (Plot.Orientation = TChartOrientation.Horizontal);
+  FMapping.IsContinuousX := TChartKindTraits.UsesContinuousX(Plot.Kind);
+  FMapping.IsLogarithmic := Plot.YAxis.IsLogarithmic;
+  FMapping.LogBase := Plot.YAxis.LogBase;
 end;
 
 procedure TChartGeometry.Build(const PlotBounds: TRectF; const ValueRange, XRange: TValueRange);
@@ -1870,7 +2026,7 @@ begin
   FPlotBounds := PlotBounds;
 
   BuildValueMapper(ValueRange);
-  if FIsContinuousX then
+  if FMapping.IsContinuousX then
     BuildXMapper(XRange)
   else
     BuildCategoryMapper;
@@ -1879,94 +2035,81 @@ end;
 procedure TChartGeometry.BuildValueMapper(const ValueRange: TValueRange);
 begin
   var MapperRange := ValueRange;
-  if FPlot.YAxis.IsLogarithmic then
-    MapperRange := TValueRange.Create(LogN(FPlot.YAxis.LogBase, ValueRange.Min),
-                                      LogN(FPlot.YAxis.LogBase, ValueRange.Max));
+  if FMapping.IsLogarithmic then
+    MapperRange := TValueRange.Create(LogN(FMapping.LogBase, ValueRange.Min),
+                                      LogN(FMapping.LogBase, ValueRange.Max));
 
-  if FIsHorizontal then
-    FValueMapper := TLinearMapper.Create(MapperRange.Min, MapperRange.Max,
-                                         FPlotBounds.Left, FPlotBounds.Right, False)
+  if FMapping.IsHorizontal then
+    FMapping.ValueMapper := TLinearMapper.Create(MapperRange.Min, MapperRange.Max,
+                                                 FPlotBounds.Left, FPlotBounds.Right, False)
   else
-    FValueMapper := TLinearMapper.Create(MapperRange.Min, MapperRange.Max,
-                                         FPlotBounds.Top, FPlotBounds.Bottom, True);
+    FMapping.ValueMapper := TLinearMapper.Create(MapperRange.Min, MapperRange.Max,
+                                                 FPlotBounds.Top, FPlotBounds.Bottom, True);
 end;
 
 procedure TChartGeometry.BuildCategoryMapper;
 begin
   var CategoryAxisLength: Single;
-  if FIsHorizontal then
+  if FMapping.IsHorizontal then
   begin
-    FCategoryStart := FPlotBounds.Top;
+    FMapping.CategoryStart := FPlotBounds.Top;
     CategoryAxisLength := FPlotBounds.Height;
   end
   else
   begin
-    FCategoryStart := FPlotBounds.Left;
+    FMapping.CategoryStart := FPlotBounds.Left;
     CategoryAxisLength := FPlotBounds.Width;
   end;
 
   const HasCategories = (FCategoryCount > 0);
   if HasCategories then
-    FCategoryBand := CategoryAxisLength / FCategoryCount
+    FMapping.CategoryBand := CategoryAxisLength / FCategoryCount
   else
-    FCategoryBand := 0;
+    FMapping.CategoryBand := 0;
 end;
 
 procedure TChartGeometry.BuildXMapper(const XRange: TValueRange);
 begin
-  if FIsHorizontal then
-    FXMapper := TLinearMapper.Create(XRange.Min, XRange.Max, FPlotBounds.Top, FPlotBounds.Bottom, False)
+  if FMapping.IsHorizontal then
+    FMapping.XMapper := TLinearMapper.Create(XRange.Min, XRange.Max, FPlotBounds.Top, FPlotBounds.Bottom, False)
   else
-    FXMapper := TLinearMapper.Create(XRange.Min, XRange.Max, FPlotBounds.Left, FPlotBounds.Right, False);
+    FMapping.XMapper := TLinearMapper.Create(XRange.Min, XRange.Max, FPlotBounds.Left, FPlotBounds.Right, False);
 end;
 
 function TChartGeometry.MapValue(const Value: Double): Single;
 begin
-  if not FPlot.YAxis.IsLogarithmic then
-    Exit(FValueMapper.Map(Value));
-
-  const HasNoLogSpaceValue = (Value <= 0);
-  if HasNoLogSpaceValue then
-    Exit(FValueMapper.Map(FValueMapper.DataMin));
-
-  Result := FValueMapper.Map(LogN(FPlot.YAxis.LogBase, Value));
+  Result := FMapping.MapValue(Value);
 end;
 
 function TChartGeometry.MapX(const Value: Double): Single;
 begin
-  Result := FXMapper.Map(Value);
+  Result := FMapping.MapX(Value);
 end;
 
 function TChartGeometry.CategoryCenter(const Index: Integer): Single;
 begin
-  Result := FCategoryStart + (Index + 0.5) * FCategoryBand;
+  Result := FMapping.CategoryCenter(Index);
 end;
 
 function TChartGeometry.CategoryAxisPixel(const Coordinate: Double): Single;
 begin
-  if FIsContinuousX then
-    Result := MapX(Coordinate)
-  else
-    Result := FCategoryStart + (Coordinate + 0.5) * FCategoryBand;
+  Result := FMapping.CategoryAxisPixel(Coordinate);
 end;
 
 function TChartGeometry.CategoryValuePoint(const CategoryPixel: Single; const Value: Double): TPointF;
 begin
-  const ValuePixel = MapValue(Value);
-  if FIsHorizontal then
-    Result := TPointF.Create(ValuePixel, CategoryPixel)
-  else
-    Result := TPointF.Create(CategoryPixel, ValuePixel);
+  Result := FMapping.CategoryValuePoint(CategoryPixel, Value);
 end;
 
 function TChartGeometry.XYPoint(const X, Y: Double): TPointF;
 begin
-  Result := CategoryValuePoint(MapX(X), Y);
+  const XPixel = FMapping.MapX(X);
+  Result := FMapping.CategoryValuePoint(XPixel, Y);
 end;
 
 function TChartGeometry.OffsetAlongValueAxis(const Point: TPointF; const Amount: Single): TPointF;
 begin
-  if FIsHorizontal then
+  if FMapping.IsHorizontal then
     Result := TPointF.Create(Point.X + Amount, Point.Y)
   else
     Result := TPointF.Create(Point.X, Point.Y + Amount);
@@ -1977,7 +2120,7 @@ begin
   const LowPixel = Min(ValuePixel, BaselinePixel);
   const HighPixel = Max(ValuePixel, BaselinePixel);
 
-  if FIsHorizontal then
+  if FMapping.IsHorizontal then
     Result := TRectF.Create(LowPixel, CategoryPixel - BarWidth / 2, HighPixel, CategoryPixel + BarWidth / 2)
   else
     Result := TRectF.Create(CategoryPixel - BarWidth / 2, LowPixel, CategoryPixel + BarWidth / 2, HighPixel);
@@ -1985,7 +2128,7 @@ end;
 
 function TChartGeometry.CategoryBarWidth: Single;
 begin
-  Result := 0.7 * FCategoryBand;
+  Result := 0.7 * FMapping.CategoryBand;
 end;
 
 class function TChartGeometry.EffectiveXValues(const Series: TChartSeries): TArray<Double>;
@@ -2028,7 +2171,7 @@ begin
   const FirstPoint = LinePoints[0];
 
   var Closing: TArray<TPointF>;
-  if FIsHorizontal then
+  if FMapping.IsHorizontal then
     Closing := [TPointF.Create(BaselinePixel, LastPoint.Y), TPointF.Create(BaselinePixel, FirstPoint.Y)]
   else
     Closing := [TPointF.Create(LastPoint.X, BaselinePixel), TPointF.Create(FirstPoint.X, BaselinePixel)];
@@ -3205,6 +3348,7 @@ begin
     Layout.Height := Height;
     Layout.PlotBounds := Job.PlotBounds;
     Layout.DataPoints := Job.HitMap.Targets;
+    Layout.Coordinates := Job.Coordinates;
   finally
     Job.Free;
   end;
@@ -3235,6 +3379,15 @@ begin
   FGeometry.Free;
   FHitMap.Free;
   inherited Destroy;
+end;
+
+function TChartRenderJob.Coordinates: IChartCoordinates;
+begin
+  const HasGeometry = Assigned(FGeometry);
+  if HasGeometry then
+    Result := TChartCoordinates.Create(FGeometry.Mapping)
+  else
+    Result := TChartCoordinates.CreateNotLaidOut;
 end;
 
 procedure TChartRenderJob.Execute;

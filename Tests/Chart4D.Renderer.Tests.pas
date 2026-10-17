@@ -225,6 +225,24 @@ type
 
     [Test]
     procedure Render_LayoutOfAPlotWithoutSeries_IsEmpty;
+
+    [Test]
+    procedure Coordinates_LineChart_PlaceEveryPointWhereItWasDrawn;
+
+    [Test]
+    procedure Coordinates_LogarithmicValueAxis_PlaceEveryPointWhereItWasDrawn;
+
+    [Test]
+    procedure Coordinates_BarChart_PlaceEveryBarTopWhereItWasDrawn;
+
+    [Test]
+    procedure Coordinates_HorizontalBarChart_RunTheXAxisDownTheScreen;
+
+    [Test]
+    procedure Coordinates_PieChart_UseTheAnnotationSpace;
+
+    [Test]
+    procedure Coordinates_PlotWithoutSeries_Raise;
   end;
 
 implementation
@@ -1987,6 +2005,153 @@ begin
     Assert.IsTrue(Layout.PlotBounds.IsEmpty, 'Without series there is no plot area');
     Assert.AreEqual(0, Length(Layout.DataPoints), 'Without series there are no data points');
     Assert.AreEqual(Double(640), Double(Layout.Width), 'The size is still reported, for a message of your own');
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Coordinates_LineChart_PlaceEveryPointWhereItWasDrawn;
+begin
+  const Years: TArray<Double> = [1960, 1980, 2000, 2020];
+  const Values: TArray<Double> = [73.4, 75.7, 78.0, 81.4];
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Line;
+    Plot.AddLineSeries('Netherlands', Years, Values);
+
+    var Layout: TChartRenderLayout;
+    TChartRenderer.Render(Plot, FCanvas, 640, 450, Layout);
+
+    Assert.AreEqual(4, Length(Layout.DataPoints));
+    for var Index := 0 to High(Years) do
+    begin
+      const Mapped = Layout.Coordinates.PointAt(Years[Index], Values[Index]);
+      const Drawn = Layout.DataPoints[Index].Center;
+      Assert.IsTrue(Mapped.EqualsTo(Drawn, 0.01),
+        Format('The point of %g must map to where the line drew it', [Years[Index]]));
+    end;
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Coordinates_LogarithmicValueAxis_PlaceEveryPointWhereItWasDrawn;
+begin
+  const XValues: TArray<Double> = [1, 2, 3];
+  const Values: TArray<Double> = [10, 100, 1000];
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Line;
+    Plot.AddLineSeries('Growth', XValues, Values);
+    var AxisOptions := Plot.YAxis;
+    AxisOptions.Scale := TAxisScaleKind.Logarithmic;
+    Plot.YAxis := AxisOptions;
+
+    var Layout: TChartRenderLayout;
+    TChartRenderer.Render(Plot, FCanvas, 640, 450, Layout);
+
+    for var Index := 0 to High(Values) do
+    begin
+      const Mapped = Layout.Coordinates.PointAt(XValues[Index], Values[Index]);
+      const Drawn = Layout.DataPoints[Index].Center;
+      Assert.IsTrue(Mapped.EqualsTo(Drawn, 0.01),
+        Format('%g must map through the logarithm to where it was drawn', [Values[Index]]));
+    end;
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Coordinates_BarChart_PlaceEveryBarTopWhereItWasDrawn;
+begin
+  const Values: TArray<Double> = [81.4, 80.7, 82.2];
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Bar;
+    Plot.Categories := ['Netherlands', 'Belgium', 'France'];
+    Plot.AddSeries('2020', Values);
+
+    var Layout: TChartRenderLayout;
+    TChartRenderer.Render(Plot, FCanvas, 640, 450, Layout);
+
+    for var Index := 0 to High(Values) do
+    begin
+      const Bar = Layout.DataPoints[Index].Bounds;
+      Assert.AreEqual(Double(Bar.CenterPoint.X), Double(Layout.Coordinates.XToPixel(Index)), 0.01,
+        'A category index maps to the middle of its bar');
+      Assert.AreEqual(Double(Bar.Top), Double(Layout.Coordinates.YToPixel(Values[Index])), 0.01,
+        'A value maps to the top of the bar that shows it');
+    end;
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Coordinates_HorizontalBarChart_RunTheXAxisDownTheScreen;
+begin
+  const Values: TArray<Double> = [81.4, 80.7, 82.2];
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Bar;
+    Plot.Orientation := TChartOrientation.Horizontal;
+    Plot.Categories := ['Netherlands', 'Belgium', 'France'];
+    Plot.AddSeries('2020', Values);
+
+    var Layout: TChartRenderLayout;
+    TChartRenderer.Render(Plot, FCanvas, 640, 450, Layout);
+
+    for var Index := 0 to High(Values) do
+    begin
+      const Bar = Layout.DataPoints[Index].Bounds;
+      const BarEnd = TPointF.Create(Bar.Right, Bar.CenterPoint.Y);
+      const Mapped = Layout.Coordinates.PointAt(Index, Values[Index]);
+      Assert.AreEqual(Double(Bar.CenterPoint.Y), Double(Layout.Coordinates.XToPixel(Index)), 0.01,
+        'On a horizontal chart a category index maps to a vertical pixel');
+      Assert.IsTrue(Mapped.EqualsTo(BarEnd, 0.01), 'PointAt returns the screen point: the end of the bar');
+    end;
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Coordinates_PieChart_UseTheAnnotationSpace;
+begin
+  { A pie has no axes, so it maps the way its annotations are placed: X is the category
+    index across the plot width and Y a fraction of the plot height. On three categories
+    the middle one at half height is the centre of the plot area. }
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Pie;
+    Plot.Categories := ['A', 'B', 'C'];
+    Plot.AddSeries('Share', [1, 2, 3]);
+
+    var Layout: TChartRenderLayout;
+    TChartRenderer.Render(Plot, FCanvas, 640, 450, Layout);
+
+    const PlotCentre = Layout.PlotBounds.CenterPoint;
+    const Mapped = Layout.Coordinates.PointAt(1, 0.5);
+    Assert.IsTrue(Mapped.EqualsTo(PlotCentre, 0.01));
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Coordinates_PlotWithoutSeries_Raise;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    var Layout: TChartRenderLayout;
+    TChartRenderer.Render(Plot, FCanvas, 640, 450, Layout);
+
+    const Coordinates = Layout.Coordinates;
+    Assert.IsNotNull(Coordinates, 'There are always coordinates, so a caller never meets nil');
+    Assert.WillRaise(
+      procedure
+      begin
+        Coordinates.PointAt(0, 0);
+      end,
+      EChart4DException,
+      'Nothing was laid out, so there is nothing to map onto');
   finally
     Plot.Free;
   end;

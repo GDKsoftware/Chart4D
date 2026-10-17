@@ -295,6 +295,15 @@ What the handler draws is part of the rendered image, so it also ends up in `Sav
 drawn once per render, not on every repaint. Draw only: changing the plot from the handler
 renders the chart again, which fires the handler again.
 
+For a place that is not a data point, `Layout.Coordinates` turns a data coordinate into a
+pixel exactly as the chart did, logarithmic and horizontal axes included. X and Y are the
+ones annotations use: the category index or X value, and the value.
+
+```pascal
+const Target = Layout.Coordinates.PointAt(2020, 82);  // 82 years, in 2020
+Canvas.FillCircle(Target.X, Target.Y, 5, ChartDarkRed);
+```
+
 A plot with no series fires the event too, with an empty plot area and no data points, which
 leaves room for a message of your own. `TChartPainter.View` has the same event, and
 `TChartRenderer.Render` has an overload that returns the layout when you render yourself.

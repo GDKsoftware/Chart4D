@@ -1942,11 +1942,18 @@ In `Chart4D.Types.pas`:
 
 ```pascal
 type
+  IChartCoordinates = interface
+    function XToPixel(const X: Double): Single;
+    function YToPixel(const Y: Double): Single;
+    function PointAt(const X, Y: Double): TPointF;
+  end;
+
   TChartRenderLayout = record
     Width: Single;                          // the size the chart was rendered at
     Height: Single;
     PlotBounds: TRectF;                     // where the series are drawn, inside the axes
     DataPoints: TArray<TChartHitTarget>;    // one per data point, the same as the hit map
+    Coordinates: IChartCoordinates;         // any data coordinate to a pixel
   end;
 ```
 
@@ -1981,8 +1988,22 @@ type
   repaint, which renders again and fires the handler again, without end. TeeChart and
   Highcharts warn about the same loop.
 
-The layout gives positions of what was drawn, not a mapping from arbitrary data values to
-pixels. A line at a data value is already an annotation (4.1).
+**Coordinates.** `Coordinates` maps any data coordinate to a pixel exactly as the render
+did, the way TeeChart's `CalcXPosValue`/`CalcYPosValue`, Chart.js' `getPixelForValue` and
+Highcharts' `toPixels` do. Its X and Y are those of annotations (4.1): X is the 0-based
+category index on a category axis or the X value on a continuous one, Y the value on the
+value axis, through the logarithm on a logarithmic axis; on a `Pie` or `Donut`, X is the
+category index and Y a fraction of the plot height (4.23). `XToPixel` returns the pixel
+along the X axis, which runs down the screen on a horizontal chart, `YToPixel` the pixel
+along the value axis, and `PointAt` the screen point. A plot with no series lays nothing
+out; its coordinates are not nil, but every call raises `EChart4DException`
+(`SCoordinatesNotLaidOut`).
+
+There is one rule for both: the renderer's `TChartGeometry` keeps the orientation, the
+value-axis mapping with its logarithm, and the continuous X mapping or category bands in a
+`TChartCoordinateMapping` record and draws through it, and `Coordinates` is a copy of that
+record behind the interface, so a coordinate an application maps lands on the pixel the
+chart drew it at.
 
 ## 5. Tests (Tests\, DUnitX)
 
@@ -2085,7 +2106,12 @@ read from the `BDS` environment variable, defaulting to
   chart with a title reports its size, a plot area inside the canvas and below the title,
   and one data point per bar anchored inside that area; a donut reports the same data
   points as the hit-map overload; a plot with no series reports its size, an empty plot
-  area and no data points.
+  area and no data points. Its `Coordinates` put every point of a line chart, also on a
+  logarithmic value axis, where the line drew it; map a category index to the middle of
+  its bar and a value to the top of the bar on a bar chart; on a horizontal bar chart map
+  the category index to a vertical pixel while `PointAt` returns the end of the bar; on a
+  pie map `(1, 0.5)` of three categories to the centre of the plot area; and on a plot with
+  no series are not nil but raise when used.
 - `Chart4D.Renderer.Tests.pas` also covers, each against a `TRecordingCanvas`: a logarithmic
   axis renders breaks at powers of the base and raises `EChart4DException` for a
   non-positive value (4.15); a date axis with `DateMode = Auto` picks the expected

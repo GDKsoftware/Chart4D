@@ -256,12 +256,37 @@ type
   end;
 
   /// <summary>
+  /// Turns a data coordinate into the pixel a render drew it at, in the coordinate space
+  /// annotations use: <c>X</c> is the 0-based category index on a category axis, or the X
+  /// value on a continuous one (<c>Line</c>, <c>Area</c>, <c>Scatter</c>); <c>Y</c> is a
+  /// value on the value axis, logarithmic when that axis is. On a <c>Pie</c> or
+  /// <c>Donut</c>, which has no axes, <c>X</c> is the category index too and <c>Y</c> a
+  /// fraction of the plot height, 0 at the bottom and 1 at the top. A horizontal chart runs
+  /// its X axis down the screen, so <c>XToPixel</c> then returns a vertical pixel and
+  /// <c>YToPixel</c> a horizontal one; <c>PointAt</c> always returns the screen point.
+  /// </summary>
+  IChartCoordinates = interface
+    ['{25E719DE-7CCF-4A69-8418-581CCA06BE80}']
+
+    /// <summary>The pixel along the X axis of <c>X</c>.</summary>
+    /// <exception cref="EChart4DException">Raised when the chart has no series, so nothing was laid out.</exception>
+    function XToPixel(const X: Double): Single;
+    /// <summary>The pixel along the value axis of <c>Y</c>.</summary>
+    /// <exception cref="EChart4DException">Raised when the chart has no series, so nothing was laid out.</exception>
+    function YToPixel(const Y: Double): Single;
+    /// <summary>The screen point of the data coordinate <c>(X, Y)</c>.</summary>
+    /// <exception cref="EChart4DException">Raised when the chart has no series, so nothing was laid out.</exception>
+    function PointAt(const X, Y: Double): TPointF;
+  end;
+
+  /// <summary>
   /// Where a render put the chart, for an application that draws its own additions on top
   /// of it: the size the chart was rendered at, the plot area inside the title, legend,
-  /// axes and footer, and every data point in the order it was drawn. A data point carries
-  /// its anchor in <c>Info.AnchorX</c>/<c>Info.AnchorY</c>, its shape, and for a
-  /// <c>Pie</c>/<c>Donut</c> the center and radii of the circle. A plot with no series has
-  /// an empty plot area and no data points.
+  /// axes and footer, every data point in the order it was drawn, and the coordinates to
+  /// place anything else in the chart's own data space. A data point carries its anchor in
+  /// <c>Info.AnchorX</c>/<c>Info.AnchorY</c>, its shape, and for a <c>Pie</c>/<c>Donut</c>
+  /// the center and radii of the circle. A plot with no series has an empty plot area, no
+  /// data points, and coordinates that raise when used.
   /// </summary>
   TChartRenderLayout = record
     /// <summary>The width, in pixels, the chart was rendered at.</summary>
@@ -272,6 +297,11 @@ type
     PlotBounds: TRectF;
     /// <summary>One hit target per data point, the same ones hover tracking uses.</summary>
     DataPoints: TArray<TChartHitTarget>;
+    /// <summary>
+    /// Maps a data coordinate to a pixel exactly as this render did, for anything that is
+    /// not one of the data points.
+    /// </summary>
+    Coordinates: IChartCoordinates;
   end;
 
   /// <summary>
