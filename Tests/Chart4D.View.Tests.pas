@@ -21,6 +21,7 @@ interface
 uses
   DUnitX.TestFramework,
   Chart4D.Tests.Asserts,
+  Chart4D.Canvas.Interfaces,
   Chart4D.Types,
   Chart4D.Plot,
   Chart4D.View,
@@ -40,9 +41,14 @@ type
     FLastHoverInfo: TChartHitInfo;
     FLastHoverSender: TObject;
     FRepaintRequestCount: Integer;
+    FAfterRenderCount: Integer;
+    FAfterRenderSender: TObject;
+    FAfterRenderLayout: TChartRenderLayout;
 
     procedure HandleDataPointHover(Sender: TObject; const Info: TChartHitInfo);
     procedure HandleRepaintRequest(Sender: TObject);
+    procedure HandleAfterRenderDrawingAMarker(Sender: TObject; const Canvas: IChartCanvas;
+                                              const Layout: TChartRenderLayout);
     function RenderCallCount(const Width, Height: Single): NativeInt;
     function FirstBarTarget: TChartHitTarget;
     procedure HoverFirstBar;
@@ -113,14 +119,33 @@ type
 
     [Test]
     procedure Destroy_PlotOnChangedReassigned_LeavesItAlone;
+
+    [Test]
+    procedure OnAfterRender_Render_FiresOnceOnTopOfTheChart;
+
+    [Test]
+    procedure OnAfterRender_RenderWhileStillValid_DoesNotFire;
+
+    [Test]
+    procedure OnAfterRender_Layout_DescribesTheRender;
+
+    [Test]
+    procedure RenderSnapshot_WhileStillValid_DrawsAndFires;
+
+    [Test]
+    procedure RenderSnapshot_AtAnotherSize_LeavesTheScreenRenderAlone;
   end;
 
 implementation
 
 uses
   System.Classes,
-  Chart4D.Canvas.Interfaces,
+  System.UITypes,
   Chart4D.Renderer;
+
+const
+  /// <summary>The color of the line the after-render handler draws, so the tests can find it.</summary>
+  MarkerColor = TAlphaColor($FFFF00FF);
 
 procedure TChartViewTests.Setup;
 begin
@@ -138,6 +163,9 @@ begin
   FLastHoverInfo := Default(TChartHitInfo);
   FLastHoverSender := nil;
   FRepaintRequestCount := 0;
+  FAfterRenderCount := 0;
+  FAfterRenderSender := nil;
+  FAfterRenderLayout := Default(TChartRenderLayout);
 end;
 
 procedure TChartViewTests.TearDown;
@@ -158,6 +186,19 @@ end;
 procedure TChartViewTests.HandleRepaintRequest(Sender: TObject);
 begin
   Inc(FRepaintRequestCount);
+end;
+
+/// <summary>
+/// Records the event and draws a diagonal line in <c>MarkerColor</c>, the way an
+/// application would draw its own addition on top of the chart.
+/// </summary>
+procedure TChartViewTests.HandleAfterRenderDrawingAMarker(Sender: TObject; const Canvas: IChartCanvas;
+                                                          const Layout: TChartRenderLayout);
+begin
+  Inc(FAfterRenderCount);
+  FAfterRenderSender := Sender;
+  FAfterRenderLayout := Layout;
+  Canvas.DrawLine(0, 0, Layout.Width, Layout.Height, MarkerColor, 1, False);
 end;
 
 function TChartViewTests.RenderCallCount(const Width, Height: Single): NativeInt;
@@ -391,6 +432,75 @@ begin
   FView := nil;
 
   Assert.IsTrue(Assigned(FPlot.OnChanged), 'A handler assigned after the view took over must survive the view');
+end;
+
+procedure TChartViewTests.OnAfterRender_Render_FiresOnceOnTopOfTheChart;
+begin
+  FView.OnAfterRender := HandleAfterRenderDrawingAMarker;
+  const Canvas = TRecordingCanvas.Create;
+  const CanvasReference: IChartCanvas = Canvas;
+
+  FView.Render(CanvasReference, ViewWidth, ViewHeight);
+
+  Assert.AreEqual(1, FAfterRenderCount, 'One render fires the event once');
+  Assert.AreSame(FView, FAfterRenderSender, 'The view is the sender');
+  Assert.IsTrue(Canvas.Calls.Count > 1, 'The chart itself must be drawn as well');
+  const LastCall = Canvas.Calls[Canvas.Calls.Count - 1];
+  Assert.AreEqual<TAlphaColor>(MarkerColor, LastCall.Color,
+    'What the handler draws comes after the chart, so it lands on top of it');
+end;
+
+procedure TChartViewTests.OnAfterRender_RenderWhileStillValid_DoesNotFire;
+begin
+  FView.OnAfterRender := HandleAfterRenderDrawingAMarker;
+
+  RenderCallCount(ViewWidth, ViewHeight);
+  RenderCallCount(ViewWidth, ViewHeight);
+
+  Assert.AreEqual(1, FAfterRenderCount,
+    'A render that draws nothing must not fire: the surface still holds the earlier additions');
+end;
+
+procedure TChartViewTests.OnAfterRender_Layout_DescribesTheRender;
+begin
+  FView.OnAfterRender := HandleAfterRenderDrawingAMarker;
+
+  RenderCallCount(ViewWidth, ViewHeight);
+
+  Assert.AreEqual(Double(ViewWidth), Double(FAfterRenderLayout.Width));
+  Assert.AreEqual(Double(ViewHeight), Double(FAfterRenderLayout.Height));
+  Assert.AreEqual(3, Length(FAfterRenderLayout.DataPoints), 'One data point per bar');
+
+  const ExpectedBounds = FirstBarTarget.Bounds;
+  const ReportedBounds = FAfterRenderLayout.DataPoints[0].Bounds;
+  Assert.IsTrue(ExpectedBounds.EqualsTo(ReportedBounds, 0.01), 'The layout places the first bar where it was drawn');
+end;
+
+procedure TChartViewTests.RenderSnapshot_WhileStillValid_DrawsAndFires;
+begin
+  FView.OnAfterRender := HandleAfterRenderDrawingAMarker;
+  RenderCallCount(ViewWidth, ViewHeight);
+  const Canvas = TRecordingCanvas.Create;
+  const CanvasReference: IChartCanvas = Canvas;
+
+  FView.RenderSnapshot(CanvasReference, ViewWidth, ViewHeight);
+
+  Assert.IsTrue(Canvas.Calls.Count > 1, 'A snapshot always draws the chart');
+  Assert.AreEqual(2, FAfterRenderCount, 'A snapshot fires the event, so an export holds the additions too');
+  Assert.IsFalse(FView.NeedsRender(ViewWidth, ViewHeight), 'A snapshot leaves the render on screen valid');
+end;
+
+procedure TChartViewTests.RenderSnapshot_AtAnotherSize_LeavesTheScreenRenderAlone;
+begin
+  RenderCallCount(ViewWidth, ViewHeight);
+  const CanvasReference: IChartCanvas = TRecordingCanvas.Create;
+
+  FView.RenderSnapshot(CanvasReference, ViewWidth / 2, ViewHeight / 2);
+
+  Assert.IsFalse(FView.NeedsRender(ViewWidth, ViewHeight), 'A smaller snapshot must not make the screen render stale');
+  const Target = FirstBarTarget;
+  FView.MouseMove(Target.Bounds.CenterPoint.X, Target.Bounds.CenterPoint.Y);
+  Assert.IsTrue(FLastHoverInfo.HasHit, 'Hover still tracks the bars at their size on screen');
 end;
 
 end.

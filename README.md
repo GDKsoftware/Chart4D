@@ -264,6 +264,41 @@ end;
 
 `SaveToPng` never draws a tooltip, so an export is always clean.
 
+## Drawing your own additions
+
+`OnAfterRender` fires right after the chart is drawn, with the canvas it was drawn on and a
+layout that says where everything ended up: the plot area, and every data point with its
+anchor and shape (for a pie or donut, the circle's center and radii as well). This marks the
+highest point:
+
+```pascal
+Chart.OnAfterRender := ChartAfterRender;
+
+procedure TFormMain.ChartAfterRender(Sender: TObject; const Canvas: IChartCanvas;
+                                     const Layout: TChartRenderLayout);
+begin
+  if Length(Layout.DataPoints) = 0 then
+    Exit;
+
+  var Highest := Layout.DataPoints[0];
+  for var DataPoint in Layout.DataPoints do
+  begin
+    if DataPoint.Info.Value > Highest.Info.Value then
+      Highest := DataPoint;
+  end;
+
+  Canvas.FillCircle(Highest.Info.AnchorX, Highest.Info.AnchorY, 6, ChartDarkRed);
+end;
+```
+
+What the handler draws is part of the rendered image, so it also ends up in `SaveToPng`. It is
+drawn once per render, not on every repaint. Draw only: changing the plot from the handler
+renders the chart again, which fires the handler again.
+
+A plot with no series fires the event too, with an empty plot area and no data points, which
+leaves room for a message of your own. `TChartPainter.View` has the same event, and
+`TChartRenderer.Render` has an overload that returns the layout when you render yourself.
+
 ## Painting on your own canvas
 
 `TChart4D` is not the only way to put a plot on screen. When you already have a canvas, say a

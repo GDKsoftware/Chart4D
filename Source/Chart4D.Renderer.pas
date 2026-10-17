@@ -57,6 +57,20 @@ type
     class procedure Render(const Plot: TChartPlot; const Canvas: IChartCanvas;
                            const Width, Height: Single;
                            out HitMap: TArray<TChartHitTarget>); overload;
+
+    /// <summary>
+    /// Renders <c>Plot</c> onto <c>Canvas</c> at the given pixel size and returns where it
+    /// put the chart: the plot area and every data point, so a caller can draw its own
+    /// additions on top in the chart's own pixels. Does not mutate <c>Plot</c>. A plot with
+    /// no series draws just the background and returns an empty plot area.
+    /// </summary>
+    /// <exception cref="EChart4DException">
+    /// Raised when series value counts do not match the chart's categories or each
+    /// other, or when a series has no values or a NaN value.
+    /// </exception>
+    class procedure Render(const Plot: TChartPlot; const Canvas: IChartCanvas;
+                           const Width, Height: Single;
+                           out Layout: TChartRenderLayout); overload;
   end;
 
 implementation
@@ -1008,6 +1022,8 @@ type
     procedure Execute;
 
     property HitMap: TChartHitMap read FHitMap;
+    /// <summary>The plot area the layout settled on; empty for a plot with no series.</summary>
+    property PlotBounds: TRectF read FPlotBounds;
   end;
 
 class function TLegendItem.Create(const Name: string; const Color: TAlphaColor): TLegendItem;
@@ -3173,10 +3189,22 @@ class procedure TChartRenderer.Render(const Plot: TChartPlot; const Canvas: ICha
                                       const Width, Height: Single;
                                       out HitMap: TArray<TChartHitTarget>);
 begin
+  var Layout: TChartRenderLayout;
+  Render(Plot, Canvas, Width, Height, Layout);
+  HitMap := Layout.DataPoints;
+end;
+
+class procedure TChartRenderer.Render(const Plot: TChartPlot; const Canvas: IChartCanvas;
+                                      const Width, Height: Single;
+                                      out Layout: TChartRenderLayout);
+begin
   const Job = TChartRenderJob.Create(Plot, Canvas, Width, Height);
   try
     Job.Execute;
-    HitMap := Job.HitMap.Targets;
+    Layout.Width := Width;
+    Layout.Height := Height;
+    Layout.PlotBounds := Job.PlotBounds;
+    Layout.DataPoints := Job.HitMap.Targets;
   finally
     Job.Free;
   end;

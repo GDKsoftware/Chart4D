@@ -106,6 +106,7 @@ object FormMain: TFormMain
     Width = 796
     Height = 640
     Align = alClient
+    OnAfterRender = ChartAfterRender
   end
   object SaveDialogPng: TSaveDialog
     DefaultExt = 'png'

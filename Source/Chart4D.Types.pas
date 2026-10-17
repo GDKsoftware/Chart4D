@@ -256,6 +256,25 @@ type
   end;
 
   /// <summary>
+  /// Where a render put the chart, for an application that draws its own additions on top
+  /// of it: the size the chart was rendered at, the plot area inside the title, legend,
+  /// axes and footer, and every data point in the order it was drawn. A data point carries
+  /// its anchor in <c>Info.AnchorX</c>/<c>Info.AnchorY</c>, its shape, and for a
+  /// <c>Pie</c>/<c>Donut</c> the center and radii of the circle. A plot with no series has
+  /// an empty plot area and no data points.
+  /// </summary>
+  TChartRenderLayout = record
+    /// <summary>The width, in pixels, the chart was rendered at.</summary>
+    Width: Single;
+    /// <summary>The height, in pixels, the chart was rendered at.</summary>
+    Height: Single;
+    /// <summary>The plot area: where the series are drawn, inside the axes.</summary>
+    PlotBounds: TRectF;
+    /// <summary>One hit target per data point, the same ones hover tracking uses.</summary>
+    DataPoints: TArray<TChartHitTarget>;
+  end;
+
+  /// <summary>
   /// Fired when the hovered data point of a chart control changes, including when the
   /// pointer leaves every target (<c>Info.HasHit = False</c>).
   /// </summary>

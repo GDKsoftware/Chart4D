@@ -35,7 +35,6 @@ uses
   Chart4D.Canvas.Interfaces,
   Chart4D.Plot,
   Chart4D.Preview,
-  Chart4D.Renderer,
   Chart4D.View;
 
 type
@@ -163,10 +162,12 @@ type
     FDesignPlot: TChartPlot;
     FDesignPainter: TChartPainter;
     FOnDataPointHover: TChartHoverEvent;
+    FOnAfterRender: TChartRenderEvent;
 
     procedure RenderForExport(const Canvas: FMX.Graphics.TCanvas; const Width, Height: Single);
     procedure ViewDataPointHover(Sender: TObject; const Info: TChartHitInfo);
     procedure ViewRepaintRequest(Sender: TObject);
+    procedure ViewAfterRender(Sender: TObject; const Canvas: IChartCanvas; const Layout: TChartRenderLayout);
     function GetShowTooltips: Boolean;
     procedure SetShowTooltips(const Value: Boolean);
     function GetTitle: string;
@@ -222,8 +223,8 @@ type
 
     /// <summary>
     /// Renders the owned plot into an offscreen bitmap of <c>Width</c> x <c>Height</c>
-    /// pixels and saves it as a PNG file at <c>FilePath</c>. Never draws the hover
-    /// tooltip.
+    /// pixels and saves it as a PNG file at <c>FilePath</c>. Fires <c>OnAfterRender</c>,
+    /// so the file holds what the handler draws, but never draws the hover tooltip.
     /// </summary>
     /// <exception cref="EChart4DException">Raised when the plot has no series to export.</exception>
     procedure SaveToPng(const FilePath: string;
@@ -282,6 +283,12 @@ type
 
     /// <summary>Fired when the hovered data point changes, including when the pointer leaves every target.</summary>
     property OnDataPointHover: TChartHoverEvent read FOnDataPointHover write FOnDataPointHover;
+    /// <summary>
+    /// Fired right after the chart is drawn, on screen and in <c>SaveToPng</c>, to draw your
+    /// own additions on top. Draw on <c>Canvas</c>; <c>Layout</c> says where the plot area
+    /// and every data point are. Do not change the plot here: that draws the chart again.
+    /// </summary>
+    property OnAfterRender: TChartRenderEvent read FOnAfterRender write FOnAfterRender;
     property OnClick;
     property OnDblClick;
     property OnMouseDown;
@@ -576,6 +583,7 @@ begin
   FPainter := TChartPainter.Create(FPlot);
   FPainter.View.OnDataPointHover := ViewDataPointHover;
   FPainter.View.OnRepaintRequest := ViewRepaintRequest;
+  FPainter.View.OnAfterRender := ViewAfterRender;
   HitTest := True;
   SetBounds(0, 0, DefaultExportWidth, DefaultExportHeight);
 end;
@@ -786,7 +794,7 @@ end;
 procedure TChart4D.RenderForExport(const Canvas: FMX.Graphics.TCanvas; const Width, Height: Single);
 begin
   const ChartCanvas: IChartCanvas = TFmxChartCanvas.Create(Canvas);
-  TChartRenderer.Render(FPlot, ChartCanvas, Width, Height);
+  FPainter.View.RenderSnapshot(ChartCanvas, Width, Height);
 end;
 
 procedure TChart4D.ViewDataPointHover(Sender: TObject; const Info: TChartHitInfo);
@@ -798,6 +806,12 @@ end;
 procedure TChart4D.ViewRepaintRequest(Sender: TObject);
 begin
   Repaint;
+end;
+
+procedure TChart4D.ViewAfterRender(Sender: TObject; const Canvas: IChartCanvas; const Layout: TChartRenderLayout);
+begin
+  if Assigned(FOnAfterRender) then
+    FOnAfterRender(Self, Canvas, Layout);
 end;
 
 end.

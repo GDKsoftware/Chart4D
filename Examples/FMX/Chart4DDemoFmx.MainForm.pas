@@ -42,6 +42,7 @@ uses
   Chart4D.Consts,
   Chart4D.Axis,
   Chart4D.Plot,
+  Chart4D.Canvas.Interfaces,
   Chart4D.FMX,
   Chart4DDemo.Catalog;
 
@@ -63,10 +64,12 @@ type
     procedure FormCreate(Sender: TObject);
     procedure ComboBoxSampleChange(Sender: TObject);
     procedure ButtonExportPngClick(Sender: TObject);
+    procedure ChartAfterRender(Sender: TObject; const Canvas: IChartCanvas; const Layout: TChartRenderLayout);
 
   private
     FSamples: TArray<TDemoSample>;
     FLogoFilePath: string;
+    FDecorate: TDemoDecorateProc;
 
     function ResolveLogoFilePath: string;
     procedure PopulateSampleItems;
@@ -129,6 +132,12 @@ begin
   Chart.SaveToPng(SaveDialogPng.FileName);
 end;
 
+procedure TMainForm.ChartAfterRender(Sender: TObject; const Canvas: IChartCanvas; const Layout: TChartRenderLayout);
+begin
+  if Assigned(FDecorate) then
+    FDecorate(Canvas, Layout);
+end;
+
 procedure TMainForm.ApplySelectedSample;
 begin
   const HasSelection = (ComboBoxSample.ItemIndex >= 0) and
@@ -138,6 +147,7 @@ begin
 
   const Sample = FSamples[ComboBoxSample.ItemIndex];
   const Plot = Chart.Plot;
+  FDecorate := Sample.Decorate;
 
   Plot.ClearSeries;
   Plot.ClearAnnotations;
