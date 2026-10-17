@@ -58,6 +58,11 @@ resourcestring
   SPairedValueCountMismatch = '%s series has %d start value(s) but %d end value(s)';
   /// <summary>Raised when a plot with no series is exported through an explicit entry point such as <c>SaveToPng</c>.</summary>
   SNoSeriesToRender = 'The chart has no series to render';
+  /// <summary>
+  /// Raised when the coordinates of a render of a plot with no series are used: nothing was
+  /// laid out, so there is no data space to place a coordinate in.
+  /// </summary>
+  SCoordinatesNotLaidOut = 'The chart has no series, so it has no coordinates to map onto';
   /// <summary>Raised when a series has no values at all, leaving the value axis nothing to compute a range from.</summary>
   SSeriesHasNoValues = 'Series "%s" has no values';
   /// <summary>Raised when a series value is NaN, which no axis can place.</summary>
