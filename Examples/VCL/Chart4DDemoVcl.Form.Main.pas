@@ -36,6 +36,7 @@ uses
   Chart4D.Consts,
   Chart4D.Axis,
   Chart4D.Style,
+  Chart4D.Canvas.Interfaces,
   Chart4D.VCL,
   Chart4DDemo.Catalog;
 
@@ -57,11 +58,13 @@ type
     procedure FormCreate(Sender: TObject);
     procedure ComboBoxSampleChange(Sender: TObject);
     procedure ButtonExportPngClick(Sender: TObject);
+    procedure ChartAfterRender(Sender: TObject; const Canvas: IChartCanvas; const Layout: TChartRenderLayout);
     procedure PanelSideResize(Sender: TObject);
 
   private
     FSamples: TArray<TDemoSample>;
     FLogoFilePath: string;
+    FDecorate: TDemoDecorateProc;
 
     function ResolveLogoFilePath: string;
     procedure PopulateSampleItems;
@@ -126,6 +129,12 @@ begin
   Chart.SaveToPng(SaveDialogPng.FileName);
 end;
 
+procedure TFormMain.ChartAfterRender(Sender: TObject; const Canvas: IChartCanvas; const Layout: TChartRenderLayout);
+begin
+  if Assigned(FDecorate) then
+    FDecorate(Canvas, Layout);
+end;
+
 procedure TFormMain.PanelSideResize(Sender: TObject);
 begin
   SizeExplanationToText;
@@ -139,6 +148,7 @@ begin
     Exit;
 
   const Sample = FSamples[ComboBoxSample.ItemIndex];
+  FDecorate := Sample.Decorate;
 
   Chart.Plot.ClearSeries;
   Chart.Plot.ClearAnnotations;

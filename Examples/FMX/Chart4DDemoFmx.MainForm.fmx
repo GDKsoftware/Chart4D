@@ -94,6 +94,7 @@ object MainForm: TMainForm
     Size.Width = 796.000000000000000000
     Size.Height = 652.000000000000000000
     Size.PlatformDefault = False
+    OnAfterRender = ChartAfterRender
   end
   object SaveDialogPng: TSaveDialog
     DefaultExt = 'png'

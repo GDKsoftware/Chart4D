@@ -216,6 +216,15 @@ type
 
     [Test]
     procedure Render_LogarithmicValueAxisManualMinValueZero_RaisesException;
+
+    [Test]
+    procedure Render_Layout_PlacesEveryDataPointInsideThePlotArea;
+
+    [Test]
+    procedure Render_Layout_HoldsTheSameDataPointsAsTheHitMap;
+
+    [Test]
+    procedure Render_LayoutOfAPlotWithoutSeries_IsEmpty;
   end;
 
 implementation
@@ -1905,6 +1914,79 @@ begin
       end,
       EChart4DException,
       'A logarithmic value axis must raise EChart4DException for a manual MinValue of 0');
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_Layout_PlacesEveryDataPointInsideThePlotArea;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Bar;
+    Plot.Title := 'Life expectancy';
+    Plot.Categories := ['Netherlands', 'Belgium', 'France'];
+    Plot.AddSeries('2020', [81.4, 80.7, 82.2]);
+
+    var Layout: TChartRenderLayout;
+    TChartRenderer.Render(Plot, FCanvas, 640, 450, Layout);
+
+    Assert.AreEqual(Double(640), Double(Layout.Width), 'The layout reports the width it was rendered at');
+    Assert.AreEqual(Double(450), Double(Layout.Height), 'The layout reports the height it was rendered at');
+
+    const CanvasBounds = TRectF.Create(0, 0, 640, 450);
+    const PlotArea = Layout.PlotBounds;
+    Assert.IsFalse(PlotArea.IsEmpty, 'A chart with data has a plot area');
+    Assert.IsTrue(CanvasBounds.Contains(PlotArea), 'The plot area lies inside the canvas');
+    Assert.IsTrue(PlotArea.Top > 0, 'The title sits above the plot area');
+
+    Assert.AreEqual(3, Length(Layout.DataPoints), 'One data point per bar');
+    for var DataPoint in Layout.DataPoints do
+    begin
+      const AnchorPoint = TPointF.Create(DataPoint.Info.AnchorX, DataPoint.Info.AnchorY);
+      Assert.IsTrue(PlotArea.Contains(AnchorPoint),
+        Format('The bar of %s must be anchored inside the plot area', [DataPoint.Info.CategoryLabel]));
+    end;
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_Layout_HoldsTheSameDataPointsAsTheHitMap;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Donut;
+    Plot.Categories := ['A', 'B', 'C'];
+    Plot.AddSeries('Share', [1, 2, 3]);
+
+    var HitMap: TArray<TChartHitTarget>;
+    TChartRenderer.Render(Plot, FCanvas, 640, 450, HitMap);
+    var Layout: TChartRenderLayout;
+    TChartRenderer.Render(Plot, FCanvas, 640, 450, Layout);
+
+    Assert.AreEqual(Length(HitMap), Length(Layout.DataPoints));
+    for var Index := 0 to High(HitMap) do
+    begin
+      Assert.AreEqual(Double(HitMap[Index].OuterRadius), Double(Layout.DataPoints[Index].OuterRadius), 0.001,
+        'Both overloads describe the same segment');
+      Assert.AreEqual(HitMap[Index].Info.CategoryLabel, Layout.DataPoints[Index].Info.CategoryLabel);
+    end;
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_LayoutOfAPlotWithoutSeries_IsEmpty;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    var Layout: TChartRenderLayout;
+    TChartRenderer.Render(Plot, FCanvas, 640, 450, Layout);
+
+    Assert.IsTrue(Layout.PlotBounds.IsEmpty, 'Without series there is no plot area');
+    Assert.AreEqual(0, Length(Layout.DataPoints), 'Without series there are no data points');
+    Assert.AreEqual(Double(640), Double(Layout.Width), 'The size is still reported, for a message of your own');
   finally
     Plot.Free;
   end;

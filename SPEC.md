@@ -770,6 +770,7 @@ type
     property ShowHint;
     property Visible;
     property OnDataPointHover: TChartHoverEvent;
+    property OnAfterRender: TChartRenderEvent;     // see 4.31
     property OnClick;
     property OnDblClick;
     property OnMouseDown;
@@ -780,7 +781,8 @@ type
 
 Implementation notes: `SmoothingModeAntiAlias`, `TextRenderingHintAntiAliasGridFit`;
 fonts created with `UnitPixel` so style sizes are pixels. `TAlphaColor` maps 1:1 to the
-GDI+ ARGB color value. `SaveToPng` renders into a `TGPBitmap` and saves with the PNG
+GDI+ ARGB color value. `SaveToPng` renders into a `TGPBitmap` through
+`View.RenderSnapshot`, so `OnAfterRender` fires for the export too, and saves with the PNG
 encoder CLSID; it raises `EChart4DException` when the plot has no series to export,
 whereas painting an empty control does not (4.8). Default control size 640x450. GDI+
 startup/shutdown is handled by `Winapi.GDIPOBJ`.
@@ -791,7 +793,7 @@ through a second `TGdiPlusChartCanvas` on the target canvas' `HDC`, created only
 `View.HasOverlay` is true. `TChart4D` owns its plot and a painter on that plot, and passes
 `Paint`, `Resize`, `MouseMove` and `CM_MOUSELEAVE` on to the painter. It maps the view's
 `OnRepaintRequest` to `Invalidate`, so the control repaints on `Plot.OnChanged`, and re-fires
-the view's `OnDataPointHover` with the control as `Sender`. The protected
+the view's `OnDataPointHover` and `OnAfterRender` with the control as `Sender`. The protected
 `RenderChartToBackBuffer` passes the call on to `TChartPainter.RenderToBackBuffer`.
 
 ### 4.10 Chart4D.FMX.pas (Source\FMX)
@@ -829,12 +831,13 @@ type
     // The same mirrored plot settings as the VCL control (4.9), followed by the FMX
     // control properties: Align, Anchors, ClipChildren, Cursor, Enabled, Height, HitTest,
     // Margins, Opacity, Padding, Position, RotationAngle, RotationCenter, Scale, Size,
-    // Visible, Width, and the mouse events.
+    // Visible, Width, the mouse events, OnDataPointHover and OnAfterRender (4.31).
   end;
 ```
 
 Text via `TTextLayout` (reliable measuring); `SaveToPng` via an offscreen
-`FMX.Graphics.TBitmap` (`BeginScene`/`EndScene`, `SaveToFile`), raising the same
+`FMX.Graphics.TBitmap` (`BeginScene`/`EndScene`, `SaveToFile`) through
+`View.RenderSnapshot`, so `OnAfterRender` fires for the export too, raising the same
 no-series `EChart4DException` as the VCL control.
 
 `TChartPainter` (4.25) keeps its back buffer in an `FMX.Graphics.TBitmap` of
@@ -844,8 +847,8 @@ start; `Paint` expects `TargetCanvas` to be inside a scene already, as it is dur
 control's `Paint`, and stretches the buffer to `Width` x `Height`. `TChart4D` owns its plot
 and a painter on that plot, and passes `Paint`, `Resize`, `MouseMove` and `DoMouseLeave` on
 to the painter. It maps the view's `OnRepaintRequest` to `Repaint`, so the control repaints
-on `Plot.OnChanged`, and re-fires the view's `OnDataPointHover` with the control as
-`Sender`. The protected `RenderChartToBackBuffer` passes the call on to
+on `Plot.OnChanged`, and re-fires the view's `OnDataPointHover` and `OnAfterRender` with the
+control as `Sender`. The protected `RenderChartToBackBuffer` passes the call on to
 `TChartPainter.RenderToBackBuffer`.
 
 ### 4.11 Hover interaction (tooltips)
@@ -878,7 +881,7 @@ type
 ```
 
 In `Chart4D.Renderer.pas` (the map-less `Render` overload delegates to this one with a
-discarded map):
+discarded map, and this one takes the data points of the layout overload of 4.31):
 
 ```pascal
 class procedure Render(const Plot: TChartPlot; const Canvas: IChartCanvas;
@@ -1582,6 +1585,7 @@ type
     destructor Destroy; override;
     function NeedsRender(const Width, Height: Single): Boolean;
     procedure Render(const Canvas: IChartCanvas; const Width, Height: Single);
+    procedure RenderSnapshot(const Canvas: IChartCanvas; const Width, Height: Single);
     procedure DrawOverlay(const Canvas: IChartCanvas; const Width, Height: Single);
     procedure Invalidate;
     procedure MouseMove(const X, Y: Single);
@@ -1591,6 +1595,7 @@ type
     property HasOverlay: Boolean read ...;
     property OnDataPointHover: TChartHoverEvent read ... write ...;
     property OnRepaintRequest: TNotifyEvent read ... write ...;
+    property OnAfterRender: TChartRenderEvent read ... write ...;   // see 4.31
   end;
 ```
 
@@ -1600,8 +1605,10 @@ type
 - A render stays valid until the plot changes, `Invalidate` is called, or `Render` is asked
   for a different `Width`/`Height` than the last render. `NeedsRender` answers exactly that,
   so a painter can skip preparing its surface. `Render` draws through
-  `TChartRenderer.Render` (4.8) and stores the hit map in the view's `TChartHoverState`
-  (4.11) only when `NeedsRender` is true, and draws nothing otherwise.
+  `TChartRenderer.Render` (4.8), stores the hit map in the view's `TChartHoverState`
+  (4.11) and fires `OnAfterRender` (4.31) only when `NeedsRender` is true, and draws
+  nothing otherwise. `RenderSnapshot` draws and fires `OnAfterRender` whatever the state of
+  the last render, and leaves that render and the hit map alone, for an export at any size.
 - `DrawOverlay` draws `TChartTooltip.Draw` (4.11) with `Plot.Style`, the hovered point and
   `Plot.YAxis.LocaleName` when `HasOverlay` is true (`ShowTooltips` and a hovered point), and
   nothing otherwise. It is meant for the screen canvas after the cached render has been
@@ -1665,7 +1672,15 @@ does not match the value `TChartPlot` starts out with, which would silently drop
 property from the DFM.
 
 `Chart4D.VCL.Register.pas` and `Chart4D.FMX.Register.pas` each hold one `Register`
-procedure that calls `RegisterComponents('Chart4D', [TChart4D])`. They are compiled into
+procedure that calls `RegisterComponents('Chart4D', [TChart4D])` and registers a selection
+editor, `TChart4DSelectionEditor`, whose `RequiresUnits` adds `Chart4D.Types` and
+`Chart4D.Canvas.Interfaces` to the uses clause of a form that holds a `TChart4D`. The form
+designer adds only the units that declare the control and its ancestors, while
+`OnDataPointHover` and `OnAfterRender` take `TChartHitInfo`, `IChartCanvas` and
+`TChartRenderLayout` from those two units, so without the editor a handler created from
+the Object Inspector would not compile. Each package declares its own editor: both design
+packages load into the IDE together, and a unit can be contained in only one of them. They
+are compiled into
 the design-only packages `Chart4D_VCL_D` and `Chart4D_FMX_D`, which require `designide`
 plus their runtime package and link `packages\Chart4D.Icons.dcr` for the palette bitmaps.
 The IDE can run as a 64-bit process, and a 64-bit IDE loads Win64x design-time packages,
@@ -1915,6 +1930,60 @@ colors.
 Empty is also what a zeroed `TChartStyle` holds, so a style built without `Default` still
 gets `DefaultPalette`.
 
+### 4.31 Drawing on top of a render
+
+An application can draw its own additions on a chart, in the chart's own pixels, without
+changing Chart4D. Other chart libraries offer the same through a hook after drawing plus the
+positions of what was drawn: TeeChart's `OnAfterDraw` with `CalcXPos`, Highcharts' `render`
+event with its renderer, Chart.js' `afterDraw` plugin hook with `chartArea` and the element
+positions.
+
+In `Chart4D.Types.pas`:
+
+```pascal
+type
+  TChartRenderLayout = record
+    Width: Single;                          // the size the chart was rendered at
+    Height: Single;
+    PlotBounds: TRectF;                     // where the series are drawn, inside the axes
+    DataPoints: TArray<TChartHitTarget>;    // one per data point, the same as the hit map
+  end;
+```
+
+In `Chart4D.Renderer.pas`, a third `Render` overload returns it; the hit-map overload
+delegates to it and returns `Layout.DataPoints`:
+
+```pascal
+class procedure Render(const Plot: TChartPlot; const Canvas: IChartCanvas;
+                       const Width, Height: Single;
+                       out Layout: TChartRenderLayout); overload;
+```
+
+In `Chart4D.View.pas`:
+
+```pascal
+type
+  TChartRenderEvent = procedure(Sender: TObject; const Canvas: IChartCanvas;
+                                const Layout: TChartRenderLayout) of object;
+```
+
+- `TChartView.OnAfterRender` fires after every render that draws: from `Render` once the
+  hit map is stored and the render marked valid, and from `RenderSnapshot`. It gets the
+  canvas the chart was drawn on, so what the handler draws lands on top of the chart in
+  the same image. On screen that image is the painter's back buffer, so the additions are
+  drawn once per render, not on every repaint, and the hover tooltip still goes over them.
+- `TChart4D` (VCL and FMX) publishes `OnAfterRender` and fires it with the control as
+  `Sender`. `SaveToPng` renders through `View.RenderSnapshot`, so an export holds the
+  additions too.
+- A plot with no series fires the event as well, with an empty `PlotBounds` and no data
+  points, so a handler can draw a message of its own on the empty chart.
+- The handler must not change the plot. A change marks the render stale and requests a
+  repaint, which renders again and fires the handler again, without end. TeeChart and
+  Highcharts warn about the same loop.
+
+The layout gives positions of what was drawn, not a mapping from arbitrary data values to
+pixels. A line at a data value is already an annotation (4.1).
+
 ## 5. Tests (Tests\, DUnitX)
 
 Console project `Chart4D.Tests.dpr` + `build.bat` (dcc32; the RAD Studio location is
@@ -1984,7 +2053,13 @@ read from the `BDS` environment variable, defaulting to
   highlight, box and series name when a point is hovered, and formats that value with the
   value axis' `Decimals` and `UseThousandSeparator` rather than its own defaults (4.27);
   destroying the view clears
-  `Plot.OnChanged`, but leaves a handler assigned after the view alone.
+  `Plot.OnChanged`, but leaves a handler assigned after the view alone. `OnAfterRender`
+  (4.31) fires once per render that draws, with the view as `Sender`, and what its handler
+  draws is the last call on the canvas; a render that draws nothing does not fire it; its
+  layout reports the render's size, one data point per bar, and the first bar where an
+  independent render puts it. `RenderSnapshot` draws and fires while the last render is
+  still valid, leaves that render valid, and a snapshot at half the size leaves hover
+  tracking on the bars at their size on screen.
 - `Chart4D.Axis.Tests.pas` also covers: the `LocaleName` overload of `FormatValue` against at
   least one non-invariant locale, and that the 2-argument overload's output is unchanged
   (4.14); `LogBreaks` against a known span (e.g. `LogBreaks(5, 3000, 10) =
@@ -2006,6 +2081,11 @@ read from the `BDS` environment variable, defaulting to
   its own order and wraps by its own length, colors a series without its own color while a
   series' own color still wins and the highlight still mutes the others, and neither a write
   to an element of a style copy nor to the array the plot was given changes the plot's colors.
+- `Chart4D.Renderer.Tests.pas` also covers the layout overload of `Render` (4.31): a bar
+  chart with a title reports its size, a plot area inside the canvas and below the title,
+  and one data point per bar anchored inside that area; a donut reports the same data
+  points as the hit-map overload; a plot with no series reports its size, an empty plot
+  area and no data points.
 - `Chart4D.Renderer.Tests.pas` also covers, each against a `TRecordingCanvas`: a logarithmic
   axis renders breaks at powers of the base and raises `EChart4DException` for a
   non-positive value (4.15); a date axis with `DateMode = Auto` picks the expected
@@ -2122,7 +2202,10 @@ switcher (a combo box over the shared catalogue in
 sample, displays the explanation and the code fragment that produces the chart beside
 it, and has an
 "Export PNG" button calling `SaveToPng` with `Source` set to
-demonstrate the publication footer. Demo data: published real-world figures, World Bank
+demonstrate the publication footer. A sample can also carry a `Decorate` procedure, which
+the form calls from the control's `OnAfterRender` (4.31), and the code of that handler
+after its build code; "Donut, one segment emphasised" uses it to draw a band beside the
+largest segment from the layout's sector data. Demo data: published real-world figures, World Bank
 World Development Indicators for most samples, the electricity mix from Ember via Our
 World in Data, and the temperature series from Met Office Hadley Centre HadCRUT5, each
 credited in its chart's `Source` footer.

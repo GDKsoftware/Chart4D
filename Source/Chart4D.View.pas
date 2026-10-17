@@ -28,6 +28,15 @@ uses
 
 type
   /// <summary>
+  /// Fired right after a chart is drawn, so an application can draw its own additions on
+  /// top: on <c>Canvas</c>, in the chart's own pixels, with <c>Layout</c> saying where the
+  /// plot area and every data point ended up. Changing the plot from the handler makes the
+  /// chart draw again and fire the event again, without end, so the handler only draws.
+  /// </summary>
+  TChartRenderEvent = procedure(Sender: TObject; const Canvas: IChartCanvas;
+                                const Layout: TChartRenderLayout) of object;
+
+  /// <summary>
   /// Shows a <c>TChartPlot</c> on a surface the caller owns. The view decides when the
   /// last render is stale, keeps the hit map of that render for hover tracking, and draws
   /// the hover tooltip as an overlay. It holds no pixels: the caller keeps the rendered
@@ -40,6 +49,7 @@ type
     FHover: TChartHoverState;
     FOnDataPointHover: TChartHoverEvent;
     FOnRepaintRequest: TNotifyEvent;
+    FOnAfterRender: TChartRenderEvent;
     FIsRenderValid: Boolean;
     FRenderedWidth: Single;
     FRenderedHeight: Single;
@@ -47,6 +57,7 @@ type
     procedure PlotChanged(Sender: TObject);
     procedure HoverChanged;
     procedure RequestRepaint;
+    procedure NotifyAfterRender(const Canvas: IChartCanvas; const Layout: TChartRenderLayout);
     function GetShowTooltips: Boolean;
     procedure SetShowTooltips(const Value: Boolean);
     function GetHasOverlay: Boolean;
@@ -72,12 +83,22 @@ type
     function NeedsRender(const Width, Height: Single): Boolean;
 
     /// <summary>
-    /// Renders the plot onto <c>Canvas</c> at <c>Width</c> x <c>Height</c> pixels and keeps
-    /// the hit map for hover tracking, but only when <c>NeedsRender</c> is <c>True</c>;
-    /// otherwise draws nothing, because the caller's surface still holds the last render.
+    /// Renders the plot onto <c>Canvas</c> at <c>Width</c> x <c>Height</c> pixels, keeps
+    /// the hit map for hover tracking and fires <c>OnAfterRender</c>, but only when
+    /// <c>NeedsRender</c> is <c>True</c>; otherwise draws nothing, because the caller's
+    /// surface still holds the last render, additions included.
     /// </summary>
     /// <exception cref="EChart4DException">Raised by <c>TChartRenderer</c> for invalid plot input.</exception>
     procedure Render(const Canvas: IChartCanvas; const Width, Height: Single);
+
+    /// <summary>
+    /// Renders the plot onto <c>Canvas</c> at <c>Width</c> x <c>Height</c> pixels whatever
+    /// the state of the last render, and fires <c>OnAfterRender</c>, for a snapshot such as
+    /// a PNG export. Leaves the hit map and the last render alone, so the surface on screen
+    /// and its hover tracking stay as they are.
+    /// </summary>
+    /// <exception cref="EChart4DException">Raised by <c>TChartRenderer</c> for invalid plot input.</exception>
+    procedure RenderSnapshot(const Canvas: IChartCanvas; const Width, Height: Single);
 
     /// <summary>
     /// Draws the hover highlight and tooltip onto <c>Canvas</c> when <c>HasOverlay</c> is
@@ -122,6 +143,12 @@ type
     /// or <c>Repaint</c> in FMX. <c>Sender</c> is the view.
     /// </summary>
     property OnRepaintRequest: TNotifyEvent read FOnRepaintRequest write FOnRepaintRequest;
+    /// <summary>
+    /// Fired after every render that draws, from <c>Render</c> and from
+    /// <c>RenderSnapshot</c>, on the canvas the chart was drawn on, so what the handler
+    /// draws lands in the same image. <c>Sender</c> is the view.
+    /// </summary>
+    property OnAfterRender: TChartRenderEvent read FOnAfterRender write FOnAfterRender;
   end;
 
 implementation
@@ -174,13 +201,22 @@ begin
   if not NeedsRender(Width, Height) then
     Exit;
 
-  var HitMap: TArray<TChartHitTarget>;
-  TChartRenderer.Render(FPlot, Canvas, Width, Height, HitMap);
-  FHover.HitMap := HitMap;
+  var Layout: TChartRenderLayout;
+  TChartRenderer.Render(FPlot, Canvas, Width, Height, Layout);
+  FHover.HitMap := Layout.DataPoints;
 
   FRenderedWidth := Width;
   FRenderedHeight := Height;
   FIsRenderValid := True;
+
+  NotifyAfterRender(Canvas, Layout);
+end;
+
+procedure TChartView.RenderSnapshot(const Canvas: IChartCanvas; const Width, Height: Single);
+begin
+  var Layout: TChartRenderLayout;
+  TChartRenderer.Render(FPlot, Canvas, Width, Height, Layout);
+  NotifyAfterRender(Canvas, Layout);
 end;
 
 procedure TChartView.DrawOverlay(const Canvas: IChartCanvas; const Width, Height: Single);
@@ -227,6 +263,12 @@ procedure TChartView.RequestRepaint;
 begin
   if Assigned(FOnRepaintRequest) then
     FOnRepaintRequest(Self);
+end;
+
+procedure TChartView.NotifyAfterRender(const Canvas: IChartCanvas; const Layout: TChartRenderLayout);
+begin
+  if Assigned(FOnAfterRender) then
+    FOnAfterRender(Self, Canvas, Layout);
 end;
 
 end.

@@ -23,7 +23,8 @@ unit Chart4DDemo.Catalog;
 /// generated from the values a sample passes to its <c>Sample</c> call rather than typed
 /// into the fragment by hand, so the heading shown next to a chart can never drift from
 /// the one the chart actually draws; only the body, the remaining calls that build the
-/// chart, is hand-written.
+/// chart, is hand-written. An example that draws on top of the chart adds the
+/// <c>OnAfterRender</c> handler that does it, as a method of a form holding the control.
 ///
 /// This unit is framework independent: it uses the Chart4D core only, never VCL or FMX.
 ///
@@ -39,11 +40,19 @@ unit Chart4DDemo.Catalog;
 interface
 
 uses
+  Chart4D.Types,
+  Chart4D.Canvas.Interfaces,
   Chart4D.Plot;
 
 type
   /// <summary>Fills a plot with one example's data and settings.</summary>
   TDemoBuildProc = reference to procedure(const Plot: TChartPlot);
+
+  /// <summary>
+  /// Draws an example's own additions on top of its chart, from the control's
+  /// <c>OnAfterRender</c>.
+  /// </summary>
+  TDemoDecorateProc = reference to procedure(const Canvas: IChartCanvas; const Layout: TChartRenderLayout);
 
   /// <summary>
   /// One catalogue entry: what to call it, what it teaches, the code that produces it,
@@ -58,6 +67,11 @@ type
     Code: string;
     /// <summary>Applies the example to a plot.</summary>
     Build: TDemoBuildProc;
+    /// <summary>
+    /// Draws on top of the chart after every render, or <c>nil</c> for an example that
+    /// draws nothing of its own.
+    /// </summary>
+    Decorate: TDemoDecorateProc;
   end;
 
   /// <summary>Static provider of every demo example.</summary>
@@ -78,6 +92,9 @@ type
     class function Sample(const Name, Explanation, Title, Subtitle, Source: string;
                           const ConstDeclarations: TArray<string>; const Body: array of string;
                           const Build: TDemoBuildProc): TDemoSample; overload; static;
+    class function Decorated(const BaseSample: TDemoSample; const HandlerCode: array of string;
+                             const Decorate: TDemoDecorateProc): TDemoSample; static;
+    class procedure EmphasiseLargestSegment(const Canvas: IChartCanvas; const Layout: TChartRenderLayout); static;
   public
     /// <summary>Every example, in the order the demos present them.</summary>
     class function Samples: TArray<TDemoSample>; static;
@@ -88,13 +105,20 @@ type
 implementation
 
 uses
+  System.Math,
   System.SysUtils,
+  System.Types,
   System.UITypes,
   Chart4D.Axis,
-  Chart4D.Style,
-  Chart4D.Types;
+  Chart4D.Style;
 
 const
+  { The band that marks the emphasised segment: how far inside the ring it runs, how many
+    straight pieces approximate its arc, and how wide it is drawn, in pixels. }
+  EmphasisBandOffset = 6;
+  EmphasisBandSteps = 90;
+  EmphasisBandWidth = 4;
+
   WorldBankSource = 'Source: World Bank';
   EmberSource = 'Source: Ember, via Our World in Data';
   HadCrutSource = 'Source: Met Office Hadley Centre, HadCRUT5';
@@ -346,6 +370,53 @@ begin
         Plot.Source := Source;
       Build(Plot);
     end;
+  Result.Decorate := nil;
+end;
+
+/// <summary>
+/// <c>BaseSample</c> with an <c>OnAfterRender</c> handler: <c>Decorate</c> draws on top of
+/// the chart, and <c>HandlerCode</c>, the same handler written out as a form method, is
+/// shown after the code that builds the chart.
+/// </summary>
+class function TDemoCatalog.Decorated(const BaseSample: TDemoSample; const HandlerCode: array of string;
+                                      const Decorate: TDemoDecorateProc): TDemoSample;
+begin
+  const Handler = Lines(HandlerCode);
+  Result := BaseSample;
+  Result.Code := Format('%s%s%s%s', [BaseSample.Code, sLineBreak, sLineBreak, Handler]);
+  Result.Decorate := Decorate;
+end;
+
+/// <summary>
+/// Draws a band along the inner edge of a donut's ring, in the hole, beside its largest
+/// segment and in that segment's color. The hole is the one place the band always has room:
+/// the ring itself fills the plot area. The layout's data points are the segments, each
+/// with the circle's center and radii and its own start and sweep angle.
+/// </summary>
+class procedure TDemoCatalog.EmphasiseLargestSegment(const Canvas: IChartCanvas; const Layout: TChartRenderLayout);
+begin
+  const HasSegments = (Length(Layout.DataPoints) > 0);
+  if not HasSegments then
+    Exit;
+
+  var Largest := Layout.DataPoints[0];
+  for var Segment in Layout.DataPoints do
+  begin
+    if Segment.Info.Value > Largest.Info.Value then
+      Largest := Segment;
+  end;
+
+  const BandRadius = Largest.InnerRadius - EmphasisBandOffset;
+  var Band: TArray<TPointF>;
+  for var Step := 0 to EmphasisBandSteps do
+  begin
+    const Angle = DegToRad(Largest.StartAngle + Largest.SweepAngle * Step / EmphasisBandSteps);
+    const BandPoint = TPointF.Create(Largest.Center.X + BandRadius * Cos(Angle),
+                                     Largest.Center.Y + BandRadius * Sin(Angle));
+    Band := Band + [BandPoint];
+  end;
+
+  Canvas.DrawPolyline(Band, Largest.Info.Color, EmphasisBandWidth);
 end;
 
 class function TDemoCatalog.DefaultSource: string;
@@ -897,7 +968,53 @@ begin
         Plot.AddSeries('Generation', ElectricityValues);
         Plot.DonutCenterText := '121.9 TWh';
         Plot.SegmentLabelPosition := TSegmentLabelPosition.Outside;
-      end)
+      end),
+
+    Decorated(
+      Sample('Donut, one segment emphasised',
+        'OnAfterRender hands over the canvas right after the chart is drawn, together with ' +
+        'where every segment ended up. Here a band along the inside of the ring marks the ' +
+        'largest segment. What the handler draws is part of the image, so the PNG export ' +
+        'has it too.',
+        'Where Dutch electricity came from', 'Generation by source, 2020, TWh', EmberSource,
+        DeclareStringArray('Sources', ElectricitySources) +
+        DeclareDoubleArray('TWh', ElectricityValues, 1),
+        ['  Plot.Kind := TChartKind.Donut;',
+         '  Plot.Categories := Sources;',
+         '  Plot.AddSeries(''Generation'', TWh);',
+         '  Plot.DonutCenterText := ''121.9 TWh'';'],
+        procedure(const Plot: TChartPlot)
+        begin
+          Plot.Kind := TChartKind.Donut;
+          Plot.Categories := ElectricitySources;
+          Plot.AddSeries('Generation', ElectricityValues);
+          Plot.DonutCenterText := '121.9 TWh';
+        end),
+      ['procedure TFormMain.ChartAfterRender(Sender: TObject; const Canvas: IChartCanvas;',
+       '                                     const Layout: TChartRenderLayout);',
+       'begin',
+       '  if Length(Layout.DataPoints) = 0 then',
+       '    Exit;',
+       '',
+       '  var Largest := Layout.DataPoints[0];',
+       '  for var Segment in Layout.DataPoints do',
+       '  begin',
+       '    if Segment.Info.Value > Largest.Info.Value then',
+       '      Largest := Segment;',
+       '  end;',
+       '',
+       '  const BandRadius = Largest.InnerRadius - 6;',
+       '  var Band: TArray<TPointF>;',
+       '  for var Step := 0 to 90 do',
+       '  begin',
+       '    const Angle = DegToRad(Largest.StartAngle + Largest.SweepAngle * Step / 90);',
+       '    Band := Band + [TPointF.Create(Largest.Center.X + BandRadius * Cos(Angle),',
+       '                                   Largest.Center.Y + BandRadius * Sin(Angle))];',
+       '  end;',
+       '',
+       '  Canvas.DrawPolyline(Band, Largest.Info.Color, 4);',
+       'end;'],
+      EmphasiseLargestSegment)
   ];
 end;
 
