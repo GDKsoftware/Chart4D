@@ -417,6 +417,12 @@ Running the IDE as a 64-bit process? Build the runtime and design packages for W
 first, which is what `Build.bat` does when your Delphi has that platform, and install the
 design packages from there.
 
+The Win64x packages are written to `$(BDSCOMMONDIR)\Bpl\Win64x` (for Delphi 13,
+`C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\Win64x`), a separate folder from the
+Win32 ones. The 64-bit IDE does not search that folder, so add it to your user `PATH` and
+restart the IDE; otherwise the design package cannot find its runtime packages. Also add
+`packages\dcp\Win64x\Release` to the Win64x library path.
+
 Or skip the packages and add `Source\` plus `Source\VCL\` or `Source\FMX\` to your project
 search path, then create the control in code.
 
