@@ -415,7 +415,8 @@ compiled units.
 
 Running the IDE as a 64-bit process? Build the runtime and design packages for Win64x
 first, which is what `Build.bat` does when your Delphi has that platform, and install the
-design packages from there.
+design packages from there with Windows 64-bit (Modern) and Release active in the Project
+Manager.
 
 The Win64x packages are written to `$(BDSCOMMONDIR)\Bpl\Win64x` (for Delphi 13,
 `C:\Users\Public\Documents\Embarcadero\Studio\37.0\Bpl\Win64x`), a separate folder from the
