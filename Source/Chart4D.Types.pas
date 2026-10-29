@@ -50,6 +50,16 @@ type
   TLegendPosition = (None, Top, Right, Bottom, Left);
 
   /// <summary>
+  /// What a legend entry shows: the name of its series (or, for <c>Pie</c> and
+  /// <c>Donut</c>, its category), its value, its share of the total, or a combination,
+  /// such as "Fossil (70)", "70 Fossil", "Fossil (35%)", "35% Fossil" or
+  /// "Fossil (70, 35%)". A series entry takes the sum of the series' values. Default
+  /// <c>Name</c>, listed first so a zeroed field already means the default.
+  /// </summary>
+  TLegendLabelMode = (Name, Value, Percentage, NameAndValue, ValueAndName, NameAndPercentage,
+                      PercentageAndName, NameValueAndPercentage);
+
+  /// <summary>
   /// The kind of annotation drawn relative to a chart's series. Most kinds draw on top
   /// of the series; <c>HorizontalRangeOverlay</c> and <c>VerticalRangeOverlay</c> draw
   /// behind the grid and every series instead, as a shaded background zone.

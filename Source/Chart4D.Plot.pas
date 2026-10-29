@@ -48,6 +48,8 @@ type
     FStackMode: TStackMode;
     FLegendPosition: TLegendPosition;
     FLegendReversed: Boolean;
+    FLegendLabels: TLegendLabelMode;
+    FLegendLabelDecimals: Integer;
     FAnnotations: TArray<TChartAnnotation>;
     FValueLabels: TValueLabelMode;
     FSegmentLabels: TSegmentLabelMode;
@@ -72,6 +74,8 @@ type
     procedure SetStackMode(const Value: TStackMode);
     procedure SetLegendPosition(const Value: TLegendPosition);
     procedure SetLegendReversed(const Value: Boolean);
+    procedure SetLegendLabels(const Value: TLegendLabelMode);
+    procedure SetLegendLabelDecimals(const Value: Integer);
     procedure SetValueLabels(const Value: TValueLabelMode);
     procedure SetSegmentLabels(const Value: TSegmentLabelMode);
     procedure SetSegmentLabelDecimals(const Value: Integer);
@@ -216,6 +220,19 @@ type
     property LegendPosition: TLegendPosition read FLegendPosition write SetLegendPosition;
     /// <summary>Whether legend items are drawn in reverse series order.</summary>
     property LegendReversed: Boolean read FLegendReversed write SetLegendReversed;
+    /// <summary>
+    /// What each legend entry shows. Default <c>Name</c>. The value is the category's
+    /// value for a <c>Pie</c> or <c>Donut</c>, and the sum of the series' values for every
+    /// other kind; it is formatted like the tooltip, through <c>YAxis</c>. The
+    /// percentage is that value's share of the total over all series or categories.
+    /// </summary>
+    property LegendLabels: TLegendLabelMode read FLegendLabels write SetLegendLabels;
+    /// <summary>
+    /// The number of decimals the percentage in a legend entry is shown with. Default
+    /// <c>AutomaticDecimals</c>, which shows whole percents. The percentage takes its locale
+    /// and thousand separator from <c>YAxis</c>, like the segment labels.
+    /// </summary>
+    property LegendLabelDecimals: Integer read FLegendLabelDecimals write SetLegendLabelDecimals;
     /// <summary>The annotations drawn on top of the series.</summary>
     property Annotations: TArray<TChartAnnotation> read FAnnotations;
     /// <summary>Which data points get a built-in value label. Default <c>None</c>.</summary>
@@ -329,6 +346,8 @@ begin
   FOrientation := TChartOrientation.Vertical;
   FStackMode := TStackMode.Values;
   FLegendPosition := TLegendPosition.Top;
+  FLegendLabels := TLegendLabelMode.Name;
+  FLegendLabelDecimals := AutomaticDecimals;
   FValueLabels := TValueLabelMode.None;
   FSegmentLabels := TSegmentLabelMode.CategoryAndPercentage;
   FSegmentLabelDecimals := AutomaticDecimals;
@@ -650,6 +669,18 @@ end;
 procedure TChartPlot.SetLegendReversed(const Value: Boolean);
 begin
   FLegendReversed := Value;
+  NotifyChanged;
+end;
+
+procedure TChartPlot.SetLegendLabels(const Value: TLegendLabelMode);
+begin
+  FLegendLabels := Value;
+  NotifyChanged;
+end;
+
+procedure TChartPlot.SetLegendLabelDecimals(const Value: Integer);
+begin
+  FLegendLabelDecimals := Value;
   NotifyChanged;
 end;
 

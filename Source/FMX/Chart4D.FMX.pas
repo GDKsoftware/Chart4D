@@ -186,6 +186,10 @@ type
     procedure SetLegendPosition(const Value: TLegendPosition);
     function GetLegendReversed: Boolean;
     procedure SetLegendReversed(const Value: Boolean);
+    function GetLegendLabels: TLegendLabelMode;
+    procedure SetLegendLabels(const Value: TLegendLabelMode);
+    function GetLegendLabelDecimals: Integer;
+    procedure SetLegendLabelDecimals(const Value: Integer);
     function GetValueLabels: TValueLabelMode;
     procedure SetValueLabels(const Value: TValueLabelMode);
     function GetHighlightedSeriesIndex: Integer;
@@ -252,6 +256,12 @@ type
       default TLegendPosition.Top;
     /// <summary>Whether the legend lists its entries in reverse. Mirrors <c>Plot.LegendReversed</c>.</summary>
     property LegendReversed: Boolean read GetLegendReversed write SetLegendReversed default False;
+    /// <summary>What each legend entry shows. Mirrors <c>Plot.LegendLabels</c>.</summary>
+    property LegendLabels: TLegendLabelMode read GetLegendLabels write SetLegendLabels
+      default TLegendLabelMode.Name;
+    /// <summary>The decimals of the percentage in a legend entry. Mirrors <c>Plot.LegendLabelDecimals</c>.</summary>
+    property LegendLabelDecimals: Integer read GetLegendLabelDecimals write SetLegendLabelDecimals
+      default AutomaticDecimals;
     /// <summary>Which data points carry a value label. Mirrors <c>Plot.ValueLabels</c>.</summary>
     property ValueLabels: TValueLabelMode read GetValueLabels write SetValueLabels
       default TValueLabelMode.None;
@@ -685,6 +695,26 @@ end;
 procedure TChart4D.SetLegendReversed(const Value: Boolean);
 begin
   FPlot.LegendReversed := Value;
+end;
+
+function TChart4D.GetLegendLabels: TLegendLabelMode;
+begin
+  Result := FPlot.LegendLabels;
+end;
+
+procedure TChart4D.SetLegendLabels(const Value: TLegendLabelMode);
+begin
+  FPlot.LegendLabels := Value;
+end;
+
+function TChart4D.GetLegendLabelDecimals: Integer;
+begin
+  Result := FPlot.LegendLabelDecimals;
+end;
+
+procedure TChart4D.SetLegendLabelDecimals(const Value: Integer);
+begin
+  FPlot.LegendLabelDecimals := Value;
 end;
 
 function TChart4D.GetValueLabels: TValueLabelMode;

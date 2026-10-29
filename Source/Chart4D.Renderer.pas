@@ -120,6 +120,13 @@ const
   StaggeredCategoryLabelRowCount = 2;
 
   /// <summary>
+  /// A legend entry with a detail after its name, "Wind (30%)", and with the detail in
+  /// front, "30% Wind" (see SPEC.md 4.32).
+  /// </summary>
+  LegendNameThenDetail = '%s (%s)';
+  LegendDetailThenName = '%s %s';
+
+  /// <summary>
   /// The clear space, in pixels at the reference scale, between a label's text and the
   /// edge of the box behind it (see SPEC.md 4.12).
   /// </summary>
@@ -173,6 +180,8 @@ type
   public
     /// <summary>Returns <c>Values</c> in reverse order.</summary>
     class function Reversed<T>(const Values: TArray<T>): TArray<T>; static;
+    /// <summary>Returns the sum of <c>Values</c>, 0 for an empty array.</summary>
+    class function Sum(const Values: TArray<Double>): Double; static;
   end;
 
   TLegendItem = record
@@ -433,6 +442,9 @@ type
 
     function BuildSeriesLegendItems: TArray<TLegendItem>;
     function BuildCategoryLegendItems: TArray<TLegendItem>;
+    function SeriesTotals: TArray<Double>;
+    function LegendLabelText(const Name: string; const Value, Total: Double): string;
+    function LegendPercentageText(const Value, Total: Double): string;
     function ReverseLegendItems(const Items: TArray<TLegendItem>): TArray<TLegendItem>;
     function ApplyTopLegendLayout(const ContentRect: TRectF; const Items: TArray<TLegendItem>): TRectF;
     function ApplyBottomLegendLayout(const ContentRect: TRectF; const Items: TArray<TLegendItem>): TRectF;
@@ -1280,6 +1292,15 @@ begin
   end;
 end;
 
+class function TChartArray.Sum(const Values: TArray<Double>): Double;
+begin
+  Result := 0;
+  for var Value in Values do
+  begin
+    Result := Result + Value;
+  end;
+end;
+
 constructor TChartLabelPlacer.Create(const Canvas: IChartCanvas; const Style: TChartStyle;
                                      const ClampBounds: TRectF);
 begin
@@ -1634,23 +1655,84 @@ end;
 
 function TLegendEngine.BuildSeriesLegendItems: TArray<TLegendItem>;
 begin
+  const Totals = SeriesTotals;
+  const GrandTotal = TChartArray.Sum(Totals);
+
   Result := [];
   for var Index := 0 to FPlot.Series.Count - 1 do
   begin
     const CurrentSeries = FPlot.Series[Index];
     const HasName = (CurrentSeries.Name <> '');
     if HasName then
-      Result := Result + [TLegendItem.Create(CurrentSeries.Name, FPlot.SeriesColor(Index))];
+    begin
+      const LabelText = LegendLabelText(CurrentSeries.Name, Totals[Index], GrandTotal);
+      Result := Result + [TLegendItem.Create(LabelText, FPlot.SeriesColor(Index))];
+    end;
   end;
 end;
 
+/// <summary>
+/// One item per category, valued from the single series a <c>Pie</c> or <c>Donut</c>
+/// carries, which validation has already matched to the categories.
+/// </summary>
 function TLegendEngine.BuildCategoryLegendItems: TArray<TLegendItem>;
 begin
+  const Values = FPlot.Series[0].Values;
+  const Total = TChartArray.Sum(Values);
+
   SetLength(Result, Length(FPlot.Categories));
   for var Index := 0 to High(FPlot.Categories) do
   begin
-    Result[Index] := TLegendItem.Create(FPlot.Categories[Index], FPlot.CategoryColor(Index));
+    const LabelText = LegendLabelText(FPlot.Categories[Index], Values[Index], Total);
+    Result[Index] := TLegendItem.Create(LabelText, FPlot.CategoryColor(Index));
   end;
+end;
+
+function TLegendEngine.SeriesTotals: TArray<Double>;
+begin
+  SetLength(Result, FPlot.Series.Count);
+  for var Index := 0 to FPlot.Series.Count - 1 do
+  begin
+    const SeriesValues = FPlot.Series[Index].Values;
+    Result[Index] := TChartArray.Sum(SeriesValues);
+  end;
+end;
+
+function TLegendEngine.LegendLabelText(const Name: string; const Value, Total: Double): string;
+begin
+  const ValueText = TAxisScale.FormatAxisValue(Value, FPlot.YAxis);
+  const PercentageText = LegendPercentageText(Value, Total);
+
+  case FPlot.LegendLabels of
+    TLegendLabelMode.Name                   : Result := Name;
+    TLegendLabelMode.Value                  : Result := ValueText;
+    TLegendLabelMode.Percentage             : Result := PercentageText;
+    TLegendLabelMode.NameAndValue           : Result := Format(LegendNameThenDetail, [Name, ValueText]);
+    TLegendLabelMode.ValueAndName           : Result := Format(LegendDetailThenName, [ValueText, Name]);
+    TLegendLabelMode.NameAndPercentage      : Result := Format(LegendNameThenDetail, [Name, PercentageText]);
+    TLegendLabelMode.PercentageAndName      : Result := Format(LegendDetailThenName, [PercentageText, Name]);
+    TLegendLabelMode.NameValueAndPercentage : Result := Format('%s (%s, %s)', [Name, ValueText, PercentageText]);
+  else
+    raise ENotSupportedException.CreateFmt('Unsupported legend label mode: %d', [Ord(FPlot.LegendLabels)]);
+  end;
+end;
+
+/// <summary>
+/// <c>Value</c>'s share of <c>Total</c>, with the decimals of <c>LegendLabelDecimals</c>
+/// and the locale and thousand separator of <c>YAxis</c>. A zero total has no shares to
+/// divide, so every entry then reads 0%.
+/// </summary>
+function TLegendEngine.LegendPercentageText(const Value, Total: Double): string;
+begin
+  var PercentageOptions := FPlot.YAxis;
+  PercentageOptions.Decimals := FPlot.LegendLabelDecimals;
+
+  var Proportion: Double := 0;
+  const HasTotal = not SameValue(Total, 0);
+  if HasTotal then
+    Proportion := Value / Total;
+
+  Result := TAxisScale.FormatPercentage(Proportion, PercentageOptions);
 end;
 
 function TLegendEngine.ReverseLegendItems(const Items: TArray<TLegendItem>): TArray<TLegendItem>;
@@ -2968,11 +3050,7 @@ end;
 
 function TCircularSeriesRenderer.Total(const Values: TArray<Double>): Double;
 begin
-  Result := 0;
-  for var Value in Values do
-  begin
-    Result := Result + Value;
-  end;
+  Result := TChartArray.Sum(Values);
 end;
 
 function TCircularSeriesRenderer.SegmentCount(const SweepAngle: Single): Integer;

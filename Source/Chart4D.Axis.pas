@@ -144,7 +144,6 @@ type
                                            const Settings: TFormatSettings): string; static;
     class function FormatWithOptions(const Value: Double; const Options: TAxisOptions;
                                      const Decimals: Integer): string; static;
-    class function FormatBreakValue(const Value: Double; const Options: TAxisOptions): string; static;
     class function BuildDateLabels(const Breaks: TArray<Double>; const Options: TAxisOptions): TArray<string>; static;
 
     class procedure ValidatePositiveLogValue(const Value: Double); static;
@@ -202,6 +201,12 @@ type
     /// decimals <c>FormatValue</c> gives, since a percentage carries its own precision.
     /// </summary>
     class function FormatPercentage(const Proportion: Double; const Options: TAxisOptions): string; static;
+
+    /// <summary>
+    /// Formats a value the way the axis labels it: through <c>Options.LocaleName</c> when
+    /// set, with <c>Options.UseThousandSeparator</c> and <c>Options.Decimals</c>.
+    /// </summary>
+    class function FormatAxisValue(const Value: Double; const Options: TAxisOptions): string; static;
 
     /// <summary>
     /// Builds one label per break. <c>Options.BreakLabels</c> wins entirely when
@@ -496,7 +501,7 @@ begin
   Result := FormatWithOptions(Proportion * 100, Options, Decimals) + '%';
 end;
 
-class function TAxisScale.FormatBreakValue(const Value: Double; const Options: TAxisOptions): string;
+class function TAxisScale.FormatAxisValue(const Value: Double; const Options: TAxisOptions): string;
 begin
   Result := FormatWithOptions(Value, Options, Options.Decimals);
 end;
@@ -523,7 +528,7 @@ begin
   SetLength(Result, Length(Breaks));
   for var Index := 0 to High(Breaks) do
   begin
-    var BreakLabel := FormatBreakValue(Breaks[Index], Options);
+    var BreakLabel := FormatAxisValue(Breaks[Index], Options);
 
     const IsLastBreak = (Index = High(Breaks));
     const AppendSuffix = (Options.LabelSuffix <> '') and (not Options.SuffixOnLastOnly or IsLastBreak);

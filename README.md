@@ -149,6 +149,19 @@ whichever of the text color and white reads better. Set it to 3 to keep dark tex
 mid-tone wedges, or to 1 to never switch. Value labels and text annotations use the same
 box color; the hover tooltip always keeps its white box.
 
+A legend entry shows the series name, or the category of a pie or donut. It can show the
+value and the share of the total as well:
+
+```pascal
+Plot.LegendLabels := TLegendLabelMode.NameAndPercentage;  // "Wind (30%)"; Name by default
+Plot.LegendLabelDecimals := 1;                            // 30.4%; whole percents by default
+```
+
+The other modes are `Value`, `Percentage`, `NameAndValue`, `ValueAndName`, `PercentageAndName`
+and `NameValueAndPercentage`. A series entry takes the sum of the series' values, a pie or
+donut entry the value of its category, and the share is taken of the chart's total. Values
+follow the locale, thousand separator and decimals of `YAxis`.
+
 To argue one point while still showing context, mute everything except one series:
 
 ```pascal
