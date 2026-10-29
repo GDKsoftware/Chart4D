@@ -141,6 +141,8 @@ begin
   FSettings.StackMode := TStackMode.Proportions;
   FSettings.LegendPosition := TLegendPosition.Bottom;
   FSettings.LegendReversed := True;
+  FSettings.LegendLabels := TLegendLabelMode.NameAndPercentage;
+  FSettings.LegendLabelDecimals := 2;
   FSettings.ValueLabels := TValueLabelMode.Extremes;
   FSettings.SegmentLabels := TSegmentLabelMode.Percentage;
   FSettings.SegmentLabelDecimals := 1;
@@ -153,6 +155,8 @@ begin
   Assert.AreEqual<TStackMode>(TStackMode.Proportions, FPreview.StackMode);
   Assert.AreEqual<TLegendPosition>(TLegendPosition.Bottom, FPreview.LegendPosition);
   Assert.IsTrue(FPreview.LegendReversed);
+  Assert.AreEqual<TLegendLabelMode>(TLegendLabelMode.NameAndPercentage, FPreview.LegendLabels);
+  Assert.AreEqual(2, FPreview.LegendLabelDecimals);
   Assert.AreEqual<TValueLabelMode>(TValueLabelMode.Extremes, FPreview.ValueLabels);
   Assert.AreEqual<TSegmentLabelMode>(TSegmentLabelMode.Percentage, FPreview.SegmentLabels);
   Assert.AreEqual(1, FPreview.SegmentLabelDecimals);

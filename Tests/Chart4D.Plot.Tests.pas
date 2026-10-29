@@ -161,6 +161,12 @@ type
 
     [Test]
     procedure SegmentLabelPosition_Default_IsInside;
+
+    [Test]
+    procedure LegendLabels_Default_IsName;
+
+    [Test]
+    procedure LegendLabelDecimals_Default_IsAutomatic;
   end;
 
   [TestFixture]
@@ -209,6 +215,12 @@ type
 
     [Test]
     procedure SetSegmentLabelPosition_Called_FiresOnChanged;
+
+    [Test]
+    procedure SetLegendLabels_Called_FiresOnChanged;
+
+    [Test]
+    procedure SetLegendLabelDecimals_Called_FiresOnChanged;
   end;
 
   [TestFixture]
@@ -624,6 +636,18 @@ begin
     'A pie must keep its labels on the segments until a caller moves them outside');
 end;
 
+procedure TChartPlotLifecycleTests.LegendLabels_Default_IsName;
+begin
+  Assert.AreEqual<TLegendLabelMode>(TLegendLabelMode.Name, FPlot.LegendLabels,
+    'A legend must keep showing the names alone until a caller asks for more');
+end;
+
+procedure TChartPlotLifecycleTests.LegendLabelDecimals_Default_IsAutomatic;
+begin
+  Assert.AreEqual(AutomaticDecimals, FPlot.LegendLabelDecimals,
+    'A legend percentage must be a whole percent until a caller asks for decimals');
+end;
+
 procedure TChartPlotOnChangedTests.Setup;
 begin
   FPlot := TChartPlot.Create;
@@ -718,6 +742,20 @@ end;
 procedure TChartPlotOnChangedTests.SetSegmentLabelPosition_Called_FiresOnChanged;
 begin
   FPlot.SegmentLabelPosition := TSegmentLabelPosition.Outside;
+
+  Assert.AreEqual(1, FChangedCount);
+end;
+
+procedure TChartPlotOnChangedTests.SetLegendLabels_Called_FiresOnChanged;
+begin
+  FPlot.LegendLabels := TLegendLabelMode.NameAndValue;
+
+  Assert.AreEqual(1, FChangedCount);
+end;
+
+procedure TChartPlotOnChangedTests.SetLegendLabelDecimals_Called_FiresOnChanged;
+begin
+  FPlot.LegendLabelDecimals := 1;
 
   Assert.AreEqual(1, FChangedCount);
 end;

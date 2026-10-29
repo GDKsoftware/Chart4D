@@ -515,6 +515,8 @@ type
     property StackMode: TStackMode ...;           // default Values
     property LegendPosition: TLegendPosition ...; // default Top
     property LegendReversed: Boolean ...;
+    property LegendLabels: TLegendLabelMode ...;       // default Name; see 4.32
+    property LegendLabelDecimals: Integer ...;         // default AutomaticDecimals; see 4.32
     property Annotations: TArray<TChartAnnotation> read ...;
     property ValueLabels: TValueLabelMode ...;         // default None; see 4.12
     property SegmentLabels: TSegmentLabelMode ...;     // default CategoryAndPercentage; see 4.29
@@ -603,7 +605,8 @@ sides):
    one item per named series; for `Pie`/`Donut`, `BuildCategoryLegendItems` builds one
    item per category (`Categories[i]`/`CategoryColor(i)`) instead, since those kinds
    always have exactly one series (4.23); the "more than one item"
-   condition to show the legend still applies, there counting categories.
+   condition to show the legend still applies, there counting categories. What an item's
+   text holds besides the name, its value and its share, follows `LegendLabels` (4.32).
 5. Plot area: from below the legend (12 px gap) down to the category/axis labels and
    the footer. Left inset = widest value-axis label + 8 px. Right inset = half the
    width of the last horizontal-axis label, so that label is never clipped at the
@@ -2005,6 +2008,55 @@ value-axis mapping with its logarithm, and the continuous X mapping or category 
 record behind the interface, so a coordinate an application maps lands on the pixel the
 chart drew it at.
 
+### 4.32 Legend label options
+
+A legend entry can show the value and the share it stands for, not only its name. TeeChart
+offers the same through `Legend.TextStyle` (`ltsLeftValue`, `ltsLeftPercent`,
+`ltsXAndPercent` and so on), with the values formatted by the series and the percentages
+by a separate format.
+
+In `Chart4D.Types.pas`:
+
+```pascal
+{$SCOPEDENUMS ON}
+type
+  TLegendLabelMode = (Name, Value, Percentage, NameAndValue, ValueAndName, NameAndPercentage,
+                      PercentageAndName, NameValueAndPercentage);
+{$SCOPEDENUMS OFF}
+```
+
+`TChartPlot` carries `LegendLabels: TLegendLabelMode`, default `Name`, which picks the text
+of every legend item (4.8). For an entry named `'Wind'` with a value of 30 out of 100:
+
+- `Name`: `'Wind'`.
+- `Value`: `'30'`.
+- `Percentage`: `'30%'`.
+- `NameAndValue`: `'Wind (30)'`.
+- `ValueAndName`: `'30 Wind'`.
+- `NameAndPercentage`: `'Wind (30%)'`, the form of a pie's segment labels (4.29).
+- `PercentageAndName`: `'30% Wind'`.
+- `NameValueAndPercentage`: `'Wind (30, 30%)'`.
+
+The default is listed first so that a zeroed field already means it.
+
+The value of a `Pie` or `Donut` entry is the value of its category in the single series. The
+value of a series entry is the sum of the series' values, so a stacked bar with one category
+gives every segment of the bar its own value, and a chart with more categories gives each
+series its total. The share is that value divided by the total of all entries of the
+chart: all categories of a pie, all series otherwise, including a series without a name and
+so without an entry. Negative values count with their sign. A chart whose total is zero
+shows a share of 0% for every entry rather than dividing by zero.
+
+The value is formatted by `TAxisScale.FormatAxisValue` with `YAxis`, as the tooltip does:
+its locale, thousand separator and decimals. `TChartPlot` also carries
+`LegendLabelDecimals: Integer`, default `AutomaticDecimals`, the number of decimals of the
+share, with the meaning of 4.27 (`AutomaticDecimals` is a whole percent). The share takes
+`YAxis.LocaleName` and `YAxis.UseThousandSeparator`, like the segment labels, but not
+`YAxis.Decimals`.
+
+`TChart4D` (VCL and FMX) publishes both as `LegendLabels` and `LegendLabelDecimals`, and the
+design-time preview (4.26) copies them.
+
 ## 5. Tests (Tests\, DUnitX)
 
 Console project `Chart4D.Tests.dpr` + `build.bat` (dcc32; the RAD Studio location is
@@ -2060,7 +2112,7 @@ read from the `BDS` environment variable, defaulting to
   and outer radius and within its angular span, including a case straddling the 0/360
   wraparound, and misses when outside either bound.
 - `Chart4D.Preview.Tests.pas`: `TChartPreview.FillFrom` (4.26) carries the text and layout
-  settings over, `SegmentLabels`, `SegmentLabelDecimals` and `SegmentLabelPosition` among them (4.29), gives a scatter series its X values and a range series its end values,
+  settings over, `SegmentLabels`, `SegmentLabelDecimals` and `SegmentLabelPosition` among them (4.29), as well as `LegendLabels` and `LegendLabelDecimals` (4.32), gives a scatter series its X values and a range series its end values,
   adds a second series for `GroupedBar`, and refilling replaces the sample instead of
   adding to it.
 - `Chart4D.View.Tests.pas`: against a `TRecordingCanvas`, `TChartView.Render` (4.25) draws on
@@ -2097,7 +2149,9 @@ read from the `BDS` environment variable, defaulting to
   `AddRangeBandSeries` appends (does not clear) and sets `IsRangeBand`; `CategoryColor`
   cycles the palette by category index (4.7); `SegmentLabels` defaults to
   `CategoryAndPercentage`, `SegmentLabelDecimals` to `AutomaticDecimals`,
-  `SegmentLabelPosition` to `Inside`, and setting any of them fires `OnChanged` (4.29); and for `Palette` (4.30),
+  `SegmentLabelPosition` to `Inside`, and setting any of them fires `OnChanged` (4.29);
+  `LegendLabels` defaults to `Name` and `LegendLabelDecimals` to `AutomaticDecimals`, and
+  setting either fires `OnChanged` (4.32); and for `Palette` (4.30),
   an empty one gives `DefaultPalette` over two full cycles, a custom one colors categories in
   its own order and wraps by its own length, colors a series without its own color while a
   series' own color still wins and the highlight still mutes the others, and neither a write
@@ -2189,6 +2243,15 @@ read from the `BDS` environment variable, defaulting to
   no connector is drawn. A donut's labels sit outside the ring and its hole shrinks with it,
   and with no label box the text keeps the dark style color, since it sits on the white
   chart background rather than on the blue wedge.
+
+- `Chart4D.LegendLabels.Tests.pas`: the legend entries of 4.32, against a
+  `TRecordingCanvas`. On a stacked bar with one category and a `'Wind'` series of 30 next
+  to a `'Solar'` series of 70, each `LegendLabels` mode draws the Wind entry exactly as
+  4.32 lists it, from `'Wind'` to `'Wind (30, 30%)'`. With two categories, Wind at 10 and 20
+  and Solar at 30 and 40, the entries read `'Wind (30, 30%)'` and `'Solar (70, 70%)'`.
+  With every value 0 both entries read 0%. On a pie of three equal segments without
+  segment labels, each category entry reads `'A (33%)'`; a `LegendLabelDecimals` of 1 draws
+  `'33.3%'`, and `'33,3%'` under a Dutch `YAxis.LocaleName`.
 
 - `Chart4D.Catalog.Tests.pas`: for the shared demo catalogue
   (`Examples\Common\Chart4DDemo.Catalog.pas`, 7), the numbers and names parsed back out of
