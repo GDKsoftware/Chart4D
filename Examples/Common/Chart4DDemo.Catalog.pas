@@ -610,7 +610,8 @@ begin
     Sample('Value labels (extremes)',
       'Direct labelling instead of an axis lookup. Extremes mode labels the highest ' +
       'and lowest point of every series; the other modes label every point, or the ' +
-      'first and last. A label that would cover an axis number is moved inside the ' +
+      'first and last. A label sits beside its point, the first and last ones before ' +
+      'and after the line. A label that would cover an axis number is moved inside the ' +
       'plot, and one that would collide with a label already drawn is skipped, so ' +
       'the result stays readable without any manual placement.',
       'Direct labelling', 'Extremes of both series, labelled automatically',
