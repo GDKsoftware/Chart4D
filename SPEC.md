@@ -613,7 +613,10 @@ sides):
    right edge. For `Pie`/`Donut` (4.23, 4.24), which have no axes at all, both insets and
    the bottom axis label height are always 0: `ComputeLeftInset`, `ComputeRightInset`,
    and `ComputeBottomAxisLabelHeight` return 0 when `Kind in [Pie, Donut]`, before their
-   normal axis-visibility checks. This is the plot frame; a `Line` or `Area` chart with
+   normal axis-visibility checks. With a footer, the plot area also stops at least
+   `BottomLabelMarginBelow` (10 px) above the separator, the space the bottom axis labels
+   keep there, so a chart without them, such as a pie or a chart with a hidden bottom
+   axis, never runs into the separator. This is the plot frame; a `Line` or `Area` chart with
    value labels draws its data in a narrower area inside it, so the labels at the ends of
    the lines have room (4.12).
 6. Footer, only when `Source <> ''` or `LogoFilePath <> ''`: at the very bottom, height

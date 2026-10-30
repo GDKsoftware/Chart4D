@@ -80,6 +80,16 @@ type
     procedure Render_SourceSet_DrawsFooterSeparatorAndSourceText;
 
     [Test]
+    [TestCase('Pie', 'False')]
+    [TestCase('Donut', 'True')]
+    procedure Render_CircularChartWithSource_KeepsClearOfTheFooterSeparator(const IsDonut: Boolean);
+
+    [Test]
+    [TestCase('Vertical', 'False')]
+    [TestCase('Horizontal', 'True')]
+    procedure Render_HiddenBottomAxisWithSource_KeepsClearOfTheFooterSeparator(const IsHorizontal: Boolean);
+
+    [Test]
     procedure Render_NoSourceOrLogo_DoesNotDrawFooter;
 
     [Test]
@@ -605,6 +615,100 @@ begin
   end;
 end;
 
+procedure TChartRendererTests.Render_CircularChartWithSource_KeepsClearOfTheFooterSeparator(const IsDonut: Boolean);
+begin
+  const Plot = TChartPlot.Create;
+  try
+    { A tall title block and a large scale leave the circle limited by the height, so its
+      bottom comes down to the footer. It must stop the same distance above the separator
+      as the axis labels of other chart kinds do: 10 px at the reference scale. }
+    if IsDonut then
+      Plot.Kind := TChartKind.Donut
+    else
+      Plot.Kind := TChartKind.Pie;
+    Plot.Categories := ['Fossil', 'Renewable', 'Nuclear'];
+    Plot.AddSeries('2020', [85.1, 32.7, 4.1]);
+    Plot.Title := 'Fossil still dominates';
+    Plot.Subtitle := 'Dutch power mix, 2020, TWh';
+    Plot.Source := 'Source: Ember';
+    var Style := Plot.Style;
+    Style.ScaleFactor := 2.3;
+    Plot.Style := Style;
+
+    var HitMap: TArray<TChartHitTarget>;
+    TChartRenderer.Render(Plot, FCanvas, 1000, 900, HitMap);
+
+    const CircleBottom = HitMap[0].Center.Y + HitMap[0].OuterRadius;
+    var Separator := Default(TCanvasCall);
+    for var Call in FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawLine) do
+    begin
+      if Call.Color = ChartTextDark then
+        Separator := Call;
+    end;
+    const Gap = 10 * Style.ScaleFactor;
+
+    Assert.IsTrue(CircleBottom <= Separator.Y1 - Gap + 0.01,
+      Format('the circle ends at %.1f, closer than %.1f px to the footer separator at %.1f',
+             [CircleBottom, Gap, Separator.Y1]));
+  finally
+    Plot.Free;
+  end;
+end;
+procedure TChartRendererTests.Render_HiddenBottomAxisWithSource_KeepsClearOfTheFooterSeparator(const IsHorizontal: Boolean);
+begin
+  const Plot = TChartPlot.Create;
+  try
+    { With the bottom axis hidden there are no axis labels to keep the plot off the
+      footer. Every line and bar must still stop 10 px above the separator, the space
+      the axis labels would keep. }
+    Plot.Kind := TChartKind.Bar;
+    Plot.Categories := ['Sweden', 'Spain', 'Netherlands', 'Italy'];
+    Plot.AddSeries('2020', [94.5, 93.2, 91.3, 70.5]);
+    Plot.Source := 'Source: World Bank';
+    if IsHorizontal then
+    begin
+      Plot.Orientation := TChartOrientation.Horizontal;
+      var YAxis := Plot.YAxis;
+      YAxis.Visible := False;
+      Plot.YAxis := YAxis;
+    end
+    else
+    begin
+      var XAxis := Plot.XAxis;
+      XAxis.Visible := False;
+      Plot.XAxis := XAxis;
+    end;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    var SeparatorY: Single := 0;
+    for var Call in FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawLine) do
+    begin
+      if Call.Color = ChartTextDark then
+        SeparatorY := Max(SeparatorY, Call.Y1);
+    end;
+
+    var LowestInk: Single := 0;
+    for var Call in FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawLine) do
+    begin
+      const IsSeparator = SameValue(Call.Y1, SeparatorY) and SameValue(Call.Y2, SeparatorY);
+      if not IsSeparator then
+        LowestInk := Max(LowestInk, Max(Call.Y1, Call.Y2));
+    end;
+    for var Call in FRecordingCanvas.CallsOfKind(TCanvasCallKind.FillRect) do
+    begin
+      if Call.Color = Plot.SeriesColor(0) then
+        LowestInk := Max(LowestInk, Call.Bounds.Bottom);
+    end;
+
+    const Gap = 10 * Plot.Style.ScaleFactor;
+    Assert.IsTrue(LowestInk <= SeparatorY - Gap + 0.01,
+      Format('the plot reaches %.1f, closer than %.1f px to the footer separator at %.1f',
+             [LowestInk, Gap, SeparatorY]));
+  finally
+    Plot.Free;
+  end;
+end;
 procedure TChartRendererTests.Render_NoSourceOrLogo_DoesNotDrawFooter;
 begin
   const Plot = TChartPlot.Create;
