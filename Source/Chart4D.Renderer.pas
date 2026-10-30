@@ -1055,6 +1055,7 @@ type
 
     function ComputePlotBounds(const ContentRect: TRectF): TRectF;
     function ComputeTopInset: Single;
+    function ComputeFooterClearance: Single;
     function ComputeLeftInset: Single;
     function ComputeRightInset: Single;
     function ComputeBubbleRadiusInset: Single;
@@ -4018,7 +4019,7 @@ begin
   Result.Left := Result.Left + ComputeLeftInset;
   Result.Right := Result.Right - ComputeRightInset;
   Result.Top := Result.Top + ComputeTopInset;
-  Result.Bottom := Result.Bottom - ComputeBottomAxisLabelHeight;
+  Result.Bottom := Result.Bottom - Max(ComputeBottomAxisLabelHeight, ComputeFooterClearance);
 
   const BubbleInset = ComputeBubbleRadiusInset;
   if BubbleInset > 0 then
@@ -4058,6 +4059,19 @@ begin
     Exit(0);
 
   Result := FCanvas.MeasureText(LineHeightSampleText, AxisTextStyle).Height / 2;
+end;
+
+/// <summary>
+/// The space kept between the plot area and the footer separator: the same space the axis
+/// labels of a chart keep above it. A chart without bottom axis labels, such as a pie or a
+/// chart whose bottom axis is hidden, would otherwise draw right up to the separator.
+/// </summary>
+function TChartRenderJob.ComputeFooterClearance: Single;
+begin
+  if HasFooterContent then
+    Result := BottomLabelMarginBelow
+  else
+    Result := 0;
 end;
 
 function TChartRenderJob.ComputeLeftInset: Single;

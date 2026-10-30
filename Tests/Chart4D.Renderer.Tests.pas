@@ -80,6 +80,11 @@ type
     procedure Render_SourceSet_DrawsFooterSeparatorAndSourceText;
 
     [Test]
+    [TestCase('Pie', 'False')]
+    [TestCase('Donut', 'True')]
+    procedure Render_CircularChartWithSource_KeepsClearOfTheFooterSeparator(const IsDonut: Boolean);
+
+    [Test]
     procedure Render_NoSourceOrLogo_DoesNotDrawFooter;
 
     [Test]
@@ -605,6 +610,45 @@ begin
   end;
 end;
 
+procedure TChartRendererTests.Render_CircularChartWithSource_KeepsClearOfTheFooterSeparator(const IsDonut: Boolean);
+begin
+  const Plot = TChartPlot.Create;
+  try
+    { A tall title block and a large scale leave the circle limited by the height, so its
+      bottom comes down to the footer. It must stop the same distance above the separator
+      as the axis labels of other chart kinds do: 10 px at the reference scale. }
+    if IsDonut then
+      Plot.Kind := TChartKind.Donut
+    else
+      Plot.Kind := TChartKind.Pie;
+    Plot.Categories := ['Fossil', 'Renewable', 'Nuclear'];
+    Plot.AddSeries('2020', [85.1, 32.7, 4.1]);
+    Plot.Title := 'Fossil still dominates';
+    Plot.Subtitle := 'Dutch power mix, 2020, TWh';
+    Plot.Source := 'Source: Ember';
+    var Style := Plot.Style;
+    Style.ScaleFactor := 2.3;
+    Plot.Style := Style;
+
+    var HitMap: TArray<TChartHitTarget>;
+    TChartRenderer.Render(Plot, FCanvas, 1000, 900, HitMap);
+
+    const CircleBottom = HitMap[0].Center.Y + HitMap[0].OuterRadius;
+    var Separator := Default(TCanvasCall);
+    for var Call in FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawLine) do
+    begin
+      if Call.Color = ChartTextDark then
+        Separator := Call;
+    end;
+    const Gap = 10 * Style.ScaleFactor;
+
+    Assert.IsTrue(CircleBottom <= Separator.Y1 - Gap + 0.01,
+      Format('the circle ends at %.1f, closer than %.1f px to the footer separator at %.1f',
+             [CircleBottom, Gap, Separator.Y1]));
+  finally
+    Plot.Free;
+  end;
+end;
 procedure TChartRendererTests.Render_NoSourceOrLogo_DoesNotDrawFooter;
 begin
   const Plot = TChartPlot.Create;
