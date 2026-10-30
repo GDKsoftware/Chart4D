@@ -85,6 +85,11 @@ type
     procedure Render_CircularChartWithSource_KeepsClearOfTheFooterSeparator(const IsDonut: Boolean);
 
     [Test]
+    [TestCase('Vertical', 'False')]
+    [TestCase('Horizontal', 'True')]
+    procedure Render_HiddenBottomAxisWithSource_KeepsClearOfTheFooterSeparator(const IsHorizontal: Boolean);
+
+    [Test]
     procedure Render_NoSourceOrLogo_DoesNotDrawFooter;
 
     [Test]
@@ -645,6 +650,61 @@ begin
     Assert.IsTrue(CircleBottom <= Separator.Y1 - Gap + 0.01,
       Format('the circle ends at %.1f, closer than %.1f px to the footer separator at %.1f',
              [CircleBottom, Gap, Separator.Y1]));
+  finally
+    Plot.Free;
+  end;
+end;
+procedure TChartRendererTests.Render_HiddenBottomAxisWithSource_KeepsClearOfTheFooterSeparator(const IsHorizontal: Boolean);
+begin
+  const Plot = TChartPlot.Create;
+  try
+    { With the bottom axis hidden there are no axis labels to keep the plot off the
+      footer. Every line and bar must still stop 10 px above the separator, the space
+      the axis labels would keep. }
+    Plot.Kind := TChartKind.Bar;
+    Plot.Categories := ['Sweden', 'Spain', 'Netherlands', 'Italy'];
+    Plot.AddSeries('2020', [94.5, 93.2, 91.3, 70.5]);
+    Plot.Source := 'Source: World Bank';
+    if IsHorizontal then
+    begin
+      Plot.Orientation := TChartOrientation.Horizontal;
+      var YAxis := Plot.YAxis;
+      YAxis.Visible := False;
+      Plot.YAxis := YAxis;
+    end
+    else
+    begin
+      var XAxis := Plot.XAxis;
+      XAxis.Visible := False;
+      Plot.XAxis := XAxis;
+    end;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    var SeparatorY: Single := 0;
+    for var Call in FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawLine) do
+    begin
+      if Call.Color = ChartTextDark then
+        SeparatorY := Max(SeparatorY, Call.Y1);
+    end;
+
+    var LowestInk: Single := 0;
+    for var Call in FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawLine) do
+    begin
+      const IsSeparator = SameValue(Call.Y1, SeparatorY) and SameValue(Call.Y2, SeparatorY);
+      if not IsSeparator then
+        LowestInk := Max(LowestInk, Max(Call.Y1, Call.Y2));
+    end;
+    for var Call in FRecordingCanvas.CallsOfKind(TCanvasCallKind.FillRect) do
+    begin
+      if Call.Color = Plot.SeriesColor(0) then
+        LowestInk := Max(LowestInk, Call.Bounds.Bottom);
+    end;
+
+    const Gap = 10 * Plot.Style.ScaleFactor;
+    Assert.IsTrue(LowestInk <= SeparatorY - Gap + 0.01,
+      Format('the plot reaches %.1f, closer than %.1f px to the footer separator at %.1f',
+             [LowestInk, Gap, SeparatorY]));
   finally
     Plot.Free;
   end;
