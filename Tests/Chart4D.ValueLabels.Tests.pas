@@ -35,6 +35,8 @@ type
     function WhiteBoxCount: Integer;
     function CountOfText(const Text: string): Integer;
     function CountOfValueLabelText(const Text: string): Integer;
+    function ValueLabelCall(const Text: string): TCanvasCall;
+    function BesideDistance(const Style: TChartStyle; const Text: string; const IsVerticalStep: Boolean): Single;
 
   public
     [Setup]
@@ -74,7 +76,25 @@ type
     procedure ValueLabels_LineChart_PlacementIsOffsetAboveThePoint;
 
     [Test]
-    procedure ValueLabels_BarChart_PlacementIsOffsetAboveTheBarTop;
+    procedure ValueLabels_LineChartFirstAndLast_LabelsSitBeforeAndAfterTheLine;
+
+    [Test]
+    procedure ValueLabels_LineOnContinuousAxis_PlotLeavesRoomBeforeTheFirstPoint;
+
+    [Test]
+    procedure ValueLabels_HorizontalBarChart_LabelSitsBeyondTheEndOfTheBar;
+
+    [Test]
+    procedure ValueLabels_BarReachingThePlotEdge_LabelSitsInsideTheEndOfTheBar;
+
+    [Test]
+    procedure ValueLabels_LineChart_ValueAxisLabelsKeepTheirPlace;
+
+    [Test]
+    procedure ValueLabels_LineChartValley_LabelSitsBelowThePoint;
+
+    [Test]
+    procedure ValueLabels_BarReachingTheTop_LabelSitsInsideTheBarTop;
 
     [Test]
     procedure ValueLabels_StackedBarMixedSignValues_PlacementFollowsDivergingSegmentEnds;
@@ -152,6 +172,35 @@ begin
     if IsValueLabel and (Call.Text = Text) then
       Inc(Result);
   end;
+end;
+
+function TChartValueLabelsTests.ValueLabelCall(const Text: string): TCanvasCall;
+begin
+  Result := Default(TCanvasCall);
+  var WasDrawn := False;
+  for var Call in FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawText) do
+  begin
+    const IsValueLabel = (Call.AlignH = TTextAlignH.Center) and (Call.AlignV = TTextAlignV.Middle);
+    if IsValueLabel and (Call.Text = Text) then
+    begin
+      Result := Call;
+      WasDrawn := True;
+    end;
+  end;
+
+  Assert.IsTrue(WasDrawn, Format('no value label was drawn for %s', [Text]));
+end;
+
+function TChartValueLabelsTests.BesideDistance(const Style: TChartStyle; const Text: string;
+                                               const IsVerticalStep: Boolean): Single;
+begin
+  { How far a value label's text center lies from the point it labels: the 4 px gap,
+    the 3 px box padding and half the text, all at the style's scale. }
+  const TextStyle = TChartTextStyle.Create(Style.FontName, Style.AxisFontSize, False, Style.TextColor);
+  const TextSize = FRecordingCanvas.MeasureText(Text, TextStyle);
+  const HalfText = IfThen(IsVerticalStep, TextSize.Height, TextSize.Width) / 2;
+
+  Result := (4 + 3) * Style.ScaleFactor + HalfText;
 end;
 
 procedure TChartValueLabelsTests.ValueLabels_None_DrawsNoLabels;
@@ -361,11 +410,13 @@ procedure TChartValueLabelsTests.ValueLabels_OverlappingCandidates_DrawsOnlyTheF
 begin
   const Plot = TChartPlot.Create;
   try
-    { A single category whose Start and End values are close together, on a wide manual
-      axis range, so the two candidate boxes overlap. The fixed order draws the Start
-      group before the End group, so only the Start label survives. }
+    { Two line series with a single, nearly equal value each, on a wide manual axis
+      range: both labels go above their points, so the two candidate boxes overlap. The
+      fixed order draws the first series before the second, so only its label survives. }
+    Plot.Kind := TChartKind.Line;
     Plot.Categories := ['Only'];
-    Plot.AddDumbbellSeries([500], [502]);
+    Plot.AddSeries('First', [500]);
+    Plot.AddSeries('Second', [502]);
     var YAxis := Plot.YAxis;
     YAxis.MinValue := 0;
     YAxis.MaxValue := 1000;
@@ -375,8 +426,8 @@ begin
     TChartRenderer.Render(Plot, FCanvas, 640, 450);
 
     Assert.AreEqual(1, WhiteBoxCount);
-    Assert.AreEqual(1, CountOfText(TAxisScale.FormatValue(500, False)));
-    Assert.AreEqual(0, CountOfText(TAxisScale.FormatValue(502, False)));
+    Assert.AreEqual(1, CountOfValueLabelText(TAxisScale.FormatValue(500, False)));
+    Assert.AreEqual(0, CountOfValueLabelText(TAxisScale.FormatValue(502, False)));
   finally
     Plot.Free;
   end;
@@ -409,14 +460,216 @@ begin
 
     Assert.IsTrue(LabelWasDrawn, Format('no label was drawn for the value %s', [LabelText]));
 
+    { A single point has no line ends, so its label goes above it, the box clear of it. }
+    const Distance = BesideDistance(Plot.Style, LabelText, True);
     Assert.AreEqual(LinePoint.X, LabelCall.TextX, 0.01);
-    Assert.AreEqual(LinePoint.Y - 8, LabelCall.TextY, 0.01);
+    Assert.AreEqual(LinePoint.Y - Distance, LabelCall.TextY, 0.01);
   finally
     Plot.Free;
   end;
 end;
 
-procedure TChartValueLabelsTests.ValueLabels_BarChart_PlacementIsOffsetAboveTheBarTop;
+procedure TChartValueLabelsTests.ValueLabels_LineChartFirstAndLast_LabelsSitBeforeAndAfterTheLine;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    { An X axis that runs a decade past the data on both sides leaves room before the
+      first point and after the last. Non-round values keep the label texts apart from
+      the axis break labels. }
+    Plot.Kind := TChartKind.Line;
+    Plot.AddLineSeries('S', [2000, 2010, 2020], [10.5, 20.5, 30.5]);
+    var XAxis := Plot.XAxis;
+    XAxis.MinValue := 1990;
+    XAxis.MaxValue := 2030;
+    Plot.XAxis := XAxis;
+    Plot.ValueLabels := TValueLabelMode.FirstAndLast;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    const LinePoints = FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawPolyline)[0].Points;
+    const FirstPoint = LinePoints[0];
+    const LastPoint = LinePoints[High(LinePoints)];
+    const FirstText = TAxisScale.FormatValue(10.5, False);
+    const LastText = TAxisScale.FormatValue(30.5, False);
+
+    const FirstLabel = ValueLabelCall(FirstText);
+    const LastLabel = ValueLabelCall(LastText);
+
+    Assert.AreEqual(FirstPoint.X - BesideDistance(Plot.Style, FirstText, False), FirstLabel.TextX, 0.01,
+      'the first label must sit before the start of the line');
+    Assert.AreEqual(FirstPoint.Y, FirstLabel.TextY, 0.01);
+    Assert.AreEqual(LastPoint.X + BesideDistance(Plot.Style, LastText, False), LastLabel.TextX, 0.01,
+      'the last label must sit after the end of the line');
+    Assert.AreEqual(LastPoint.Y, LastLabel.TextY, 0.01);
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartValueLabelsTests.ValueLabels_LineOnContinuousAxis_PlotLeavesRoomBeforeTheFirstPoint;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    { The first point of a continuous X axis lies on the left edge of the data. With value
+      labels on, the plot area is pulled in far enough for the label to sit before it,
+      while the value axis labels stay where they are. The manual value range keeps the
+      point clear of the bottom edge. }
+    Plot.Kind := TChartKind.Line;
+    Plot.AddLineSeries('S', [1990, 2000, 2010], [10.5, 20.5, 30.5]);
+    var YAxis := Plot.YAxis;
+    YAxis.MinValue := 0;
+    YAxis.MaxValue := 40;
+    Plot.YAxis := YAxis;
+    Plot.ValueLabels := TValueLabelMode.FirstAndLast;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    const FirstPoint = FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawPolyline)[0].Points[0];
+    const FirstText = TAxisScale.FormatValue(10.5, False);
+
+    const FirstLabel = ValueLabelCall(FirstText);
+
+    Assert.AreEqual(FirstPoint.X - BesideDistance(Plot.Style, FirstText, False), FirstLabel.TextX, 0.01,
+      'the first label must sit before the start of the line');
+    Assert.AreEqual(FirstPoint.Y, FirstLabel.TextY, 0.01);
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartValueLabelsTests.ValueLabels_HorizontalBarChart_LabelSitsBeyondTheEndOfTheBar;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    { A manual value range leaves room past the end of the bar, so this measures the
+      placement itself rather than the edge clamp. }
+    Plot.Kind := TChartKind.Bar;
+    Plot.Orientation := TChartOrientation.Horizontal;
+    Plot.Categories := ['Only'];
+    Plot.AddSeries('S', [10.5]);
+    var YAxis := Plot.YAxis;
+    YAxis.MinValue := 0;
+    YAxis.MaxValue := 40;
+    Plot.YAxis := YAxis;
+    Plot.ValueLabels := TValueLabelMode.All;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    var BarBounds: TRectF;
+    for var Call in FRecordingCanvas.CallsOfKind(TCanvasCallKind.FillRect) do
+    begin
+      if Call.Color = Plot.SeriesColor(0) then
+        BarBounds := Call.Bounds;
+    end;
+
+    const LabelText = TAxisScale.FormatValue(10.5, False);
+    const LabelCall = ValueLabelCall(LabelText);
+
+    Assert.AreEqual(BarBounds.Right + BesideDistance(Plot.Style, LabelText, False), LabelCall.TextX, 0.01,
+      'the label must sit beside the end of the bar, not across it');
+    Assert.AreEqual((BarBounds.Top + BarBounds.Bottom) / 2, LabelCall.TextY, 0.01);
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartValueLabelsTests.ValueLabels_BarReachingThePlotEdge_LabelSitsInsideTheEndOfTheBar;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    { The value range ends exactly at the bar's value, so there is no room past the end of
+      the bar. The label goes just inside the end instead of straddling it. }
+    Plot.Kind := TChartKind.Bar;
+    Plot.Orientation := TChartOrientation.Horizontal;
+    Plot.Categories := ['Only'];
+    Plot.AddSeries('S', [94.5]);
+    var YAxis := Plot.YAxis;
+    YAxis.MinValue := 0;
+    YAxis.MaxValue := 94.5;
+    Plot.YAxis := YAxis;
+    Plot.ValueLabels := TValueLabelMode.All;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    var BarBounds: TRectF;
+    for var Call in FRecordingCanvas.CallsOfKind(TCanvasCallKind.FillRect) do
+    begin
+      if Call.Color = Plot.SeriesColor(0) then
+        BarBounds := Call.Bounds;
+    end;
+
+    const LabelText = TAxisScale.FormatValue(94.5, False);
+    const LabelCall = ValueLabelCall(LabelText);
+
+    Assert.AreEqual(BarBounds.Right - BesideDistance(Plot.Style, LabelText, False), LabelCall.TextX, 0.01,
+      'the label must sit just inside the end of the bar');
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartValueLabelsTests.ValueLabels_LineChartValley_LabelSitsBelowThePoint;
+begin
+  const Plot = TChartPlot.Create;
+  try
+    { The middle point is lower than both its neighbours, so a label above it would sit in
+      the dip, on the line. It goes below the point instead. }
+    Plot.Kind := TChartKind.Line;
+    Plot.AddLineSeries('S', [2000, 2010, 2020], [30.5, 10.5, 30.5]);
+    var YAxis := Plot.YAxis;
+    YAxis.MinValue := 0;
+    YAxis.MaxValue := 40;
+    Plot.YAxis := YAxis;
+    Plot.ValueLabels := TValueLabelMode.All;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    const Valley = FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawPolyline)[0].Points[1];
+    const ValleyText = TAxisScale.FormatValue(10.5, False);
+
+    const ValleyLabel = ValueLabelCall(ValleyText);
+
+    Assert.AreEqual(Valley.X, ValleyLabel.TextX, 0.01);
+    Assert.AreEqual(Valley.Y + BesideDistance(Plot.Style, ValleyText, True), ValleyLabel.TextY, 0.01,
+      'the label of a valley must sit below the point');
+  finally
+    Plot.Free;
+  end;
+end;
+procedure TChartValueLabelsTests.ValueLabels_LineChart_ValueAxisLabelsKeepTheirPlace;
+begin
+  { The room made for the labels at the ends of the lines comes out of the data area only:
+    the value axis labels line up where they do without value labels. }
+  var AxisLabelRight: array[Boolean] of Single;
+  for var ShowsValueLabels := False to True do
+  begin
+    const Recording = TRecordingCanvas.Create;
+    const RecordingCanvas: IChartCanvas = Recording;
+    const Plot = TChartPlot.Create;
+    try
+      Plot.Kind := TChartKind.Line;
+      Plot.AddLineSeries('S', [1990, 2000, 2010], [10.5, 20.5, 30.5]);
+      if ShowsValueLabels then
+        Plot.ValueLabels := TValueLabelMode.FirstAndLast;
+
+      TChartRenderer.Render(Plot, RecordingCanvas, 640, 450);
+    finally
+      Plot.Free;
+    end;
+
+    AxisLabelRight[ShowsValueLabels] := 0;
+    for var Call in Recording.CallsOfKind(TCanvasCallKind.DrawText) do
+    begin
+      const IsValueAxisLabel = (Call.AlignH = TTextAlignH.Right) and (Call.AlignV = TTextAlignV.Middle);
+      if IsValueAxisLabel then
+        AxisLabelRight[ShowsValueLabels] := Call.TextX;
+    end;
+  end;
+
+  Assert.IsTrue(AxisLabelRight[False] > 0, 'the fixture must draw value axis labels');
+  Assert.AreEqual(AxisLabelRight[False], AxisLabelRight[True], 0.01);
+end;
+procedure TChartValueLabelsTests.ValueLabels_BarReachingTheTop_LabelSitsInsideTheBarTop;
 begin
   const Plot = TChartPlot.Create;
   try
@@ -448,34 +701,12 @@ begin
 
     Assert.IsTrue(LabelWasDrawn, Format('no label was drawn for the value %s', [LabelText]));
 
-    const RawAnchor = TPointF.Create((BarBounds.Left + BarBounds.Right) / 2, BarBounds.Top - 8);
+    Assert.AreEqual((BarBounds.Left + BarBounds.Right) / 2, LabelCall.TextX, 0.01);
 
-    { The bar's center sits well clear of the left/right outer margin, so the label's X
-      anchor is unaffected by the clamp and must equal the raw, offset-only placement. }
-    Assert.AreEqual(RawAnchor.X, LabelCall.TextX, 0.01);
-
-    { A single, short bar sits close to the top of a 450 px chart: placing the label 8 px
-      above the bar top, unclamped, would push its own background box above the 16 px
-      outer margin. This checks that outcome directly, rather than through a second copy
-      of the clamp formula: first, that the fixture's raw box really would violate the
-      margin (so the rest of this test proves something), then that the anchor actually
-      drawn keeps the box's top on or inside the margin. }
-    const Style = Plot.Style;
-    const TextStyle = TChartTextStyle.Create(Style.FontName, Style.AxisFontSize, False, Style.TextColor);
-    const TextSize = FRecordingCanvas.MeasureText(LabelText, TextStyle);
-    const Padding = 3 * Style.ScaleFactor;
-    const Margin = 16 * Style.ScaleFactor;
-
-    const RawBoxTop = RawAnchor.Y - TextSize.Height / 2 - Padding;
-    Assert.IsTrue(RawBoxTop < Margin,
-      'the fixture must place the raw anchor so the clamp actually has to act, or this test proves nothing');
-
-    Assert.AreNotEqual(RawAnchor.Y, LabelCall.TextY, 0.01,
-      'the label was not moved away from the raw, unclamped anchor');
-
-    const ActualBoxTop = LabelCall.TextY - TextSize.Height / 2 - Padding;
-    Assert.IsTrue(ActualBoxTop >= Margin - 0.01,
-      Format('the label''s background box top is at %.2f, inside the %d px outer margin', [ActualBoxTop, Round(Margin)]));
+    { A single bar reaches the top of the value range, so a label above it would run out
+      of the plot area into the title. It sits just inside the top of the bar instead. }
+    Assert.AreEqual(BarBounds.Top + BesideDistance(Plot.Style, LabelText, True), LabelCall.TextY, 0.01,
+      'the label must sit just inside the top of the bar');
   finally
     Plot.Free;
   end;
@@ -544,11 +775,12 @@ begin
     Assert.AreEqual(BarCenter, SecondLabel.TextX, 0.01);
     Assert.AreEqual(BarCenter, ThirdLabel.TextX, 0.01);
 
-    Assert.AreEqual(FirstSegment.Bounds.Top - 8, FirstLabel.TextY, 0.01,
+    const Distance = BesideDistance(Plot.Style, FirstLabel.Text, True);
+    Assert.AreEqual(FirstSegment.Bounds.Top - Distance, FirstLabel.TextY, 0.01,
       'the +5 label must sit above its own segment''s top, at +5');
-    Assert.AreEqual(SecondSegment.Bounds.Bottom + 8, SecondLabel.TextY, 0.01,
+    Assert.AreEqual(SecondSegment.Bounds.Bottom + Distance, SecondLabel.TextY, 0.01,
       'the -3 label must sit below its own segment''s bottom, at -3, not inside the positive stack');
-    Assert.AreEqual(ThirdSegment.Bounds.Top - 8, ThirdLabel.TextY, 0.01,
+    Assert.AreEqual(ThirdSegment.Bounds.Top - Distance, ThirdLabel.TextY, 0.01,
       'the +2 label must sit above its own segment''s top, at +7');
   finally
     Plot.Free;
@@ -607,9 +839,9 @@ begin
 
     { AddDumbbellSeries forces Horizontal orientation, so the value axis runs
       left-to-right, not inverted: the higher value (End, 30) maps further right than
-      Start (10). Each label moves 8 px further away from the other end. }
-    Assert.AreEqual(StartCircle.CenterX - 8, StartLabel.TextX, 0.01);
-    Assert.AreEqual(EndCircle.CenterX + 8, EndLabel.TextX, 0.01);
+      Start (10). Each label sits beside its own dot, on the side away from the other end. }
+    Assert.AreEqual(StartCircle.CenterX - BesideDistance(Plot.Style, StartText, False), StartLabel.TextX, 0.01);
+    Assert.AreEqual(EndCircle.CenterX + BesideDistance(Plot.Style, EndText, False), EndLabel.TextX, 0.01);
   finally
     Plot.Free;
   end;
@@ -661,11 +893,11 @@ begin
 
     Assert.IsTrue(EndWasLabelled, 'the arrowhead value was not labelled');
 
-    const RawAnchor = TPointF.Create(Apex.X + 8, Apex.Y);
+    const RawAnchor = TPointF.Create(Apex.X + BesideDistance(Plot.Style, EndText, False), Apex.Y);
 
     { AddArrowSeries forces Horizontal orientation, so the value axis runs left to right and
       the arrowhead (End, the higher value) sits close to the plot's right edge. Placing the
-      label 8 px further right, unclamped, would push its own background box past the 16 px
+      label beyond it, unclamped, would push its own background box past the 16 px
       outer margin. This checks that outcome directly, rather than through a second copy of
       the clamp formula: first, that the fixture's raw box really would violate the margin
       (so the rest of this test proves something), then that the anchor actually drawn keeps

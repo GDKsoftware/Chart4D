@@ -613,7 +613,9 @@ sides):
    right edge. For `Pie`/`Donut` (4.23, 4.24), which have no axes at all, both insets and
    the bottom axis label height are always 0: `ComputeLeftInset`, `ComputeRightInset`,
    and `ComputeBottomAxisLabelHeight` return 0 when `Kind in [Pie, Donut]`, before their
-   normal axis-visibility checks.
+   normal axis-visibility checks. This is the plot frame; a `Line` or `Area` chart with
+   value labels draws its data in a narrower area inside it, so the labels at the ends of
+   the lines have room (4.12).
 6. Footer, only when `Source <> ''` or `LogoFilePath <> ''`: at the very bottom, height
    `2.2 * CaptionFontSize`, a full-width separator line ($FF222222, width 1) at its top,
    source text left (CaptionFontSize, MutedTextColor, vertically centered), logo
@@ -1000,24 +1002,39 @@ grouping exists only to decide which points are candidates; it does not read or 
   order is kept and the later ties are dropped, so the result is always exactly zero, one,
   or two points per group, deterministically.
 
-**Placement**, at the reference scale (offsets scaled by `ScaleFactor`), text formatted as
-`TAxisScale.FormatValue(Value, YAxis.UseThousandSeparator, YAxis.Decimals) +
+**Placement**, at the reference scale (distances scaled by `ScaleFactor`), text formatted
+as `TAxisScale.FormatValue(Value, YAxis.UseThousandSeparator, YAxis.Decimals) +
 YAxis.LabelSuffix` (the suffix always appended, unlike axis break labels, since each value
-label stands alone; `YAxis.Decimals` per 4.27):
+label stands alone; `YAxis.Decimals` per 4.27). A label's box sits beside the point it
+labels, never on it: its near edge lies 4 px from the point, in a direction along one of
+the axes. Each candidate lists its directions in order of preference. The first direction
+wins whose box, clamped into the value label bounds (below), is not moved back towards the
+point; a shift across the direction keeps the box beside the point and is allowed. When
+every direction would move back, the one that moves back least is used.
 
-- `Line`, `Area`, `Scatter`/bubble, `DotPlot`: centered on the point, offset 8 px away from
-  the plot in the fixed direction for the chart's orientation (up when `Vertical`, right
-  when `Horizontal`); the offset direction does not depend on the point's own value.
-- `Bar`, `GroupedBar`, `Histogram`, and each `StackedBar` segment: centered on the value
-  edge opposite the baseline (the bar/segment top when `Vertical`, its right edge when
-  `Horizontal`), offset 8 px further away from the baseline pixel
-  (`FValueMapper.Map(0)`) along the value axis; `StackedBar` uses the segment's own
-  `RawValue` (matching `Info.Value` for that segment's hit target), not the cumulative
-  total.
-- `Dumbbell`, `Range`: one label per end, offset 8 px further away from the other end
-  along the value axis (i.e. the "Start" label moves further from "End", and vice versa).
-- `Arrow`: one label at the end (arrowhead) point only, offset 8 px further along the
-  arrow's own direction, beyond the arrowhead.
+- `Line`, `Area`: across the series (up when `Vertical`, right when `Horizontal`), then the
+  opposite side. A valley, a point whose two neighbours both lie across the series from it,
+  prefers the opposite side, out of the dip. The first point of a series prefers to sit
+  before the line and the last point after it (left and right when `Vertical`, above and
+  below when `Horizontal`), so neither label covers an end of the line.
+- `Scatter`/bubble, `DotPlot`: across the series, then the opposite side.
+- `Bar`, `GroupedBar`, `Histogram`, and each `StackedBar` segment: past the value edge
+  opposite the baseline (the bar/segment top when `Vertical`, its right edge when
+  `Horizontal`), away from the baseline pixel (`FValueMapper.Map(0)`) along the value
+  axis; just inside that edge when there is no room past it. `StackedBar` uses the
+  segment's own `RawValue` (matching `Info.Value` for that segment's hit target), not the
+  cumulative total.
+- `Dumbbell`, `Range`: one label per end, on the side away from the other end along the
+  value axis (i.e. the "Start" label sits further from "End", and vice versa).
+- `Arrow`: one label at the end (arrowhead) point only, beyond the arrowhead along the
+  arrow's own direction.
+
+**Room at the ends of a line.** With `ValueLabels <> None`, a `Vertical` `Line` or `Area`
+chart pulls its data area in from the plot frame by the room its first and last labels
+need: the widest first (or last) label of any series, plus its box padding and the 4 px
+gap. On the right, the room already kept for half of the last X axis label counts towards
+it. Gridlines, the baseline and the value axis labels keep to the frame; only the marks and
+the X axis positions move.
 
 Every label is drawn with the same background rectangle and 3 px padding as a
 `TextLabel` annotation (4.1), in the style's `LabelBackgroundColor` (opaque white by
@@ -1042,8 +1059,8 @@ afterward and are the caller's own responsibility to place.
 
 **Value label bounds.** The margin-adjusted chart bounds used by
 `TChartLabelPlacer.ClampShift` for
-`TextLabel` annotations, narrowed to the plot area on each edge that carries
-axis labels: the left edge when the left-edge axis is visible, the bottom edge when the
+`TextLabel` annotations, narrowed to the top of the plot frame, so a label never runs into
+the title, subtitle or legend, and to the plot frame on each edge that carries axis labels: the left edge when the left-edge axis is visible, the bottom edge when the
 bottom-edge axis is visible (which edge that is follows `Orientation`, exactly as
 `ComputeLeftInset` and `ComputeBottomAxisLabelHeight` already determine it). A value label
 therefore never covers an axis break or category label; it is moved inside the plot area
@@ -2191,7 +2208,9 @@ read from the `BDS` environment variable, defaulting to
   expected candidate set per chart kind and group (4.12), including the tie-break rule for
   `Extremes`; two labels whose clamped boxes would intersect are drawn in the fixed
   series-then-index order, with only the first one actually drawn; a label placement per
-  kind (`Line`, `Bar`, `Dumbbell`, `Arrow`) matches the offsets specified in 4.12; and
+  kind (`Line`, `Bar`, `Dumbbell`, `Arrow`) matches the placement specified in 4.12,
+  including a line's first and last label beside its ends and a bar's label inside its
+  end when there is no room past it; and
   `YAxis.Decimals` reaches the label text (4.27); and the style's `LabelBackgroundColor`
   fills every value label box in place of the white one (4.29).
 

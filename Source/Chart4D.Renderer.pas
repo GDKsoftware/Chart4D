@@ -99,11 +99,11 @@ const
   DefaultHitTargetRadius = 12;
 
   /// <summary>
-  /// The distance, in pixels at the reference scale, a value label is offset away from
-  /// its data mark, along the value axis or in the fixed direction for the chart's
-  /// orientation. Shared by every value-label placement rule (see SPEC.md 4.12).
+  /// The clear space, in pixels at the reference scale, between the box of a value label
+  /// and the point on the mark it labels. Shared by every value-label placement rule
+  /// (see SPEC.md 4.12).
   /// </summary>
-  ValueLabelOffsetAtReferenceScale = 8;
+  ValueLabelGapAtReferenceScale = 4;
 
   /// <summary>
   /// The clear space, in pixels at the reference scale, between the two rows of a
@@ -198,12 +198,14 @@ type
   end;
 
   /// <summary>
-  /// A candidate value label: the pixel point its box is centered on (already shifted
-  /// away from the series/baseline per its chart kind's placement rule) and the raw data
-  /// value it labels, used both for its formatted text and for <c>Extremes</c> selection.
+  /// A candidate value label: the pixel point on the mark it labels, the directions its
+  /// box may sit in from that point, in order of preference, as unit vectors along the
+  /// axes, and the raw data value it labels, used both for its formatted text and for
+  /// <c>Extremes</c> selection.
   /// </summary>
   TValueLabelCandidate = record
-    AnchorPoint: TPointF;
+    MarkPoint: TPointF;
+    Directions: TArray<TPointF>;
     Value: Double;
   end;
 
@@ -310,8 +312,11 @@ type
     FClampBounds: TRectF;
     FPlacedBoxes: TArray<TRectF>;
 
+    function BoxPadding: Single;
     function BackgroundBounds(const AnchorPoint: TPointF; const TextSize: TSizeF;
                               const AlignH: TTextAlignH): TRectF;
+    function BesideCenter(const MarkPoint, Direction: TPointF; const TextSize: TSizeF): TPointF;
+    class function ShiftTowardsMark(const Shift, Direction: TPointF): Single; static;
     function ClampShift(const Box: TRectF): TPointF;
     function IntersectsPlaced(const Box: TRectF): Boolean;
     function Place(const AnchorPoint: TPointF; const LabelText: string;
@@ -343,6 +348,16 @@ type
     /// </summary>
     function TryDrawIfClear(const AnchorPoint: TPointF; const LabelText: string;
                             const TextStyle: TChartTextStyle; const AlignH: TTextAlignH): Boolean;
+
+    /// <summary>
+    /// Draws a label beside <c>MarkPoint</c>, its box a small gap away from the point, in
+    /// the first of <c>Directions</c> where clamping the box into bounds does not move it
+    /// back towards the point; a shift across the direction is allowed. When every
+    /// direction would move back, the one that moves back least is used. The label is
+    /// dropped when its box would overlap one this placer has already drawn.
+    /// </summary>
+    procedure DrawBesideIfClear(const MarkPoint: TPointF; const Directions: TArray<TPointF>;
+                                const LabelText: string; const TextStyle: TChartTextStyle);
   end;
 
   /// <summary>
@@ -707,15 +722,35 @@ type
     /// point reports it.
     /// </summary>
     function ContinuousPointLabel(const XValue: Double): string;
-    /// <summary>The distance a value label is offset away from its mark.</summary>
-    function ValueLabelOffset: Single;
-    /// <summary>That offset as a vector, in the fixed direction for the chart's orientation.</summary>
-    function ValueLabelLineOffset: TPointF;
-    /// <summary>Where the value label of a bar-shaped mark goes: just past its far end.</summary>
-    function BarValueLabelPoint(const CategoryPixel, ValuePixel, BaselinePixel: Single): TPointF;
-    /// <summary>Turns drawn points and their values into label candidates, offset clear of the marks.</summary>
-    function OffsetPointGroup(const Points: TArray<TPointF>;
-                              const Values: TArray<Double>): TArray<TValueLabelCandidate>;
+    /// <summary>
+    /// The direction a point's value label takes across its series: up, or right in a
+    /// horizontal chart.
+    /// </summary>
+    function AcrossSeriesDirection: TPointF;
+    /// <summary>The direction the categories run in: right, or down in a horizontal chart.</summary>
+    function AlongCategoriesDirection: TPointF;
+    /// <summary>
+    /// The direction along the value axis that moves away from <c>FromPixel</c> when going
+    /// to <c>ToPixel</c>, or <c>AcrossSeriesDirection</c> when the two coincide.
+    /// </summary>
+    function AwayAlongValueAxis(const FromPixel, ToPixel: Single): TPointF;
+    /// <summary>
+    /// The label candidate of a bar-shaped mark: just past its far end, or just inside it
+    /// when there is no room past it.
+    /// </summary>
+    function BarLabelCandidate(const CategoryPixel, ValuePixel, BaselinePixel: Single;
+                               const Value: Double): TValueLabelCandidate;
+    /// <summary>Whether <c>Neighbour</c> lies on the across-the-series side of <c>Point</c>.</summary>
+    function IsAcross(const Neighbour, Point: TPointF): Boolean;
+    /// <summary>
+    /// Turns drawn points and their values into label candidates beside the points:
+    /// across the series, or on the other side when there is no room. On a connected
+    /// series the first label prefers to sit before the line and the last one after it,
+    /// so neither covers the end of the line, and the label of a valley, whose neighbours
+    /// both lie across the series, prefers the other side, out of the dip.
+    /// </summary>
+    function PointLabelGroup(const Points: TArray<TPointF>; const Values: TArray<Double>;
+                             const IsConnected: Boolean): TArray<TValueLabelCandidate>;
     /// <summary>
     /// The label candidates of a kind whose every data point has two ends: one group for
     /// the start ends and one for the end ends, each offset away from the other end so a
@@ -761,6 +796,8 @@ type
   protected
     procedure AddPointHitTargets(const SeriesIndex: Integer; const Series: TChartSeries;
                                  const Points: TArray<TPointF>; const Color: TAlphaColor);
+    /// <summary>Whether a series is drawn as one line through its points, so it has two ends.</summary>
+    function ConnectsPoints: Boolean; virtual;
   public
     function BuildValueLabelGroups: TArray<TArray<TValueLabelCandidate>>; override;
   end;
@@ -799,6 +836,8 @@ type
     function ComputeSizeDomain: TValueRange;
     procedure DrawPoints(const SeriesIndex: Integer; const Series: TChartSeries;
                          const Color: TAlphaColor; const SizeDomain: TValueRange);
+  protected
+    function ConnectsPoints: Boolean; override;
   public
     /// <summary>
     /// The radius a point is drawn at: the plain scatter radius without <c>Sizes</c>,
@@ -957,6 +996,12 @@ type
     FHeight: Single;
     FStyle: TChartStyle;
     FIsContinuousX: Boolean;
+    /// <summary>
+    /// The area the gridlines span and the axis labels line up against. The data is drawn
+    /// in <c>FPlotBounds</c>, which equals it unless value labels need room beside the
+    /// ends of the lines.
+    /// </summary>
+    FPlotFrame: TRectF;
     FPlotBounds: TRectF;
     FValueRange: TValueRange;
     FValueBreaks: TArray<Double>;
@@ -1013,6 +1058,8 @@ type
     function ComputeLeftInset: Single;
     function ComputeRightInset: Single;
     function ComputeBubbleRadiusInset: Single;
+    function InsetForLineEndLabels(const PlotFrame: TRectF): TRectF;
+    function LineEndLabelRoom(const AtStart: Boolean): Single;
     function LeftEdgeAxisVisible(const IsHorizontal: Boolean): Boolean;
     function CategoryAxisLabels: TArray<string>;
     function LeftEdgeLabels(const IsHorizontal: Boolean): TArray<string>;
@@ -1072,6 +1119,7 @@ type
     function SelectValueLabelCandidates(const Group: TArray<TValueLabelCandidate>;
                                         const Mode: TValueLabelMode): TArray<TValueLabelCandidate>;
     procedure DrawValueLabelCandidate(const Placer: TChartLabelPlacer; const Candidate: TValueLabelCandidate);
+    function ValueLabelText(const Value: Double): string;
 
     procedure DrawAnnotations;
     procedure DrawAnnotation(const Placer: TChartLabelPlacer; const Annotation: TChartAnnotation);
@@ -1329,6 +1377,33 @@ begin
   Result := Place(AnchorPoint, LabelText, TextStyle, AlignH, True);
 end;
 
+procedure TChartLabelPlacer.DrawBesideIfClear(const MarkPoint: TPointF; const Directions: TArray<TPointF>;
+                                              const LabelText: string; const TextStyle: TChartTextStyle);
+begin
+  const TextSize = FCanvas.MeasureText(LabelText, TextStyle);
+
+  var Center := TPointF.Zero;
+  var SmallestShift := MaxSingle;
+  for var Direction in Directions do
+  begin
+    const DirectionCenter = BesideCenter(MarkPoint, Direction, TextSize);
+    const Box = BackgroundBounds(DirectionCenter, TextSize, TTextAlignH.Center);
+    const Shift = ShiftTowardsMark(ClampShift(Box), Direction);
+    const NeedsLessShift = (Shift < SmallestShift);
+    if NeedsLessShift then
+    begin
+      Center := DirectionCenter;
+      SmallestShift := Shift;
+    end;
+
+    const StaysBesideTheMark = (Shift = 0);
+    if StaysBesideTheMark then
+      Break;
+  end;
+
+  Place(Center, LabelText, TextStyle, TTextAlignH.Center, True);
+end;
+
 function TChartLabelPlacer.Place(const AnchorPoint: TPointF; const LabelText: string;
                                  const TextStyle: TChartTextStyle; const AlignH: TTextAlignH;
                                  const SkipWhenOverlapping: Boolean): Boolean;
@@ -1352,15 +1427,39 @@ begin
   Result := True;
 end;
 
+function TChartLabelPlacer.BoxPadding: Single;
+begin
+  Result := LabelBoxPaddingAtReferenceScale * FScaleFactor;
+end;
+
 function TChartLabelPlacer.BackgroundBounds(const AnchorPoint: TPointF; const TextSize: TSizeF;
                                             const AlignH: TTextAlignH): TRectF;
 begin
-  const Padding = LabelBoxPaddingAtReferenceScale * FScaleFactor;
+  const Padding = BoxPadding;
   const Origin = TChartTextAlign.ResolveOrigin(AnchorPoint.X, AnchorPoint.Y, TextSize,
                                                AlignH, TTextAlignV.Middle);
 
   Result := TRectF.Create(Origin.X - Padding, Origin.Y - Padding,
                           Origin.X + TextSize.Width + Padding, Origin.Y + TextSize.Height + Padding);
+end;
+
+// The center of a box whose near edge lies the value-label gap from MarkPoint, in
+// Direction. A direction along one axis moves the box by half its size on that axis.
+function TChartLabelPlacer.BesideCenter(const MarkPoint, Direction: TPointF; const TextSize: TSizeF): TPointF;
+begin
+  const Gap = ValueLabelGapAtReferenceScale * FScaleFactor;
+  const HalfWidth = TextSize.Width / 2 + BoxPadding;
+  const HalfHeight = TextSize.Height / 2 + BoxPadding;
+  const Distance = Gap + Abs(Direction.X) * HalfWidth + Abs(Direction.Y) * HalfHeight;
+
+  Result := TPointF.Create(MarkPoint.X + Direction.X * Distance, MarkPoint.Y + Direction.Y * Distance);
+end;
+
+// How far a clamp moves a box back towards the point it sits beside. A shift across
+// Direction keeps the box beside the point and does not count.
+class function TChartLabelPlacer.ShiftTowardsMark(const Shift, Direction: TPointF): Single;
+begin
+  Result := Max(0, -(Shift.X * Direction.X + Shift.Y * Direction.Y));
 end;
 
 function TChartLabelPlacer.ClampShift(const Box: TRectF): TPointF;
@@ -2314,50 +2413,80 @@ begin
   Result := TAxisScale.FormatValue(XValue, FPlot.XAxis.UseThousandSeparator, FPlot.XAxis.Decimals);
 end;
 
-function TChartSeriesRenderer.ValueLabelOffset: Single;
+function TChartSeriesRenderer.AcrossSeriesDirection: TPointF;
 begin
-  Result := ValueLabelOffsetAtReferenceScale * FStyle.ScaleFactor;
-end;
-
-function TChartSeriesRenderer.ValueLabelLineOffset: TPointF;
-begin
-  const Amount = ValueLabelOffset;
   if FGeometry.IsHorizontal then
-    Result := TPointF.Create(Amount, 0)
+    Result := TPointF.Create(1, 0)
   else
-    Result := TPointF.Create(0, -Amount);
+    Result := TPointF.Create(0, -1);
 end;
 
-function TChartSeriesRenderer.BarValueLabelPoint(const CategoryPixel, ValuePixel, BaselinePixel: Single): TPointF;
+function TChartSeriesRenderer.AlongCategoriesDirection: TPointF;
 begin
-  const AwayFromBaselineSign = Sign(ValuePixel - BaselinePixel);
-
-  var BasePoint: TPointF;
   if FGeometry.IsHorizontal then
-    BasePoint := TPointF.Create(ValuePixel, CategoryPixel)
+    Result := TPointF.Create(0, 1)
   else
-    BasePoint := TPointF.Create(CategoryPixel, ValuePixel);
-
-  Result := FGeometry.OffsetAlongValueAxis(BasePoint, AwayFromBaselineSign * ValueLabelOffset);
+    Result := TPointF.Create(1, 0);
 end;
 
-function TChartSeriesRenderer.OffsetPointGroup(const Points: TArray<TPointF>;
-                                               const Values: TArray<Double>): TArray<TValueLabelCandidate>;
+function TChartSeriesRenderer.AwayAlongValueAxis(const FromPixel, ToPixel: Single): TPointF;
 begin
-  const Offset = ValueLabelLineOffset;
+  const AwaySign = Sign(ToPixel - FromPixel);
+  if AwaySign = 0 then
+    Result := AcrossSeriesDirection
+  else
+    Result := FGeometry.OffsetAlongValueAxis(TPointF.Zero, AwaySign);
+end;
+
+function TChartSeriesRenderer.BarLabelCandidate(const CategoryPixel, ValuePixel, BaselinePixel: Single;
+                                                const Value: Double): TValueLabelCandidate;
+begin
+  if FGeometry.IsHorizontal then
+    Result.MarkPoint := TPointF.Create(ValuePixel, CategoryPixel)
+  else
+    Result.MarkPoint := TPointF.Create(CategoryPixel, ValuePixel);
+
+  const PastTheEnd = AwayAlongValueAxis(BaselinePixel, ValuePixel);
+  Result.Directions := [PastTheEnd, -PastTheEnd];
+  Result.Value := Value;
+end;
+
+function TChartSeriesRenderer.IsAcross(const Neighbour, Point: TPointF): Boolean;
+begin
+  const Across = AcrossSeriesDirection;
+  Result := ((Neighbour.X - Point.X) * Across.X + (Neighbour.Y - Point.Y) * Across.Y) > 0;
+end;
+
+function TChartSeriesRenderer.PointLabelGroup(const Points: TArray<TPointF>; const Values: TArray<Double>;
+                                              const IsConnected: Boolean): TArray<TValueLabelCandidate>;
+begin
+  const Across = AcrossSeriesDirection;
+  const Along = AlongCategoriesDirection;
+  const HasLineEnds = IsConnected and (Length(Points) > 1);
 
   SetLength(Result, Length(Points));
   for var Index := 0 to High(Points) do
   begin
-    Result[Index].AnchorPoint := TPointF.Create(Points[Index].X + Offset.X, Points[Index].Y + Offset.Y);
+    Result[Index].MarkPoint := Points[Index];
     Result[Index].Value := Values[Index];
+
+    const IsFirstEnd = HasLineEnds and (Index = 0);
+    const IsLastEnd = HasLineEnds and (Index = High(Points));
+    const IsValley = HasLineEnds and not IsFirstEnd and not IsLastEnd and
+                     IsAcross(Points[Index - 1], Points[Index]) and IsAcross(Points[Index + 1], Points[Index]);
+    if IsFirstEnd then
+      Result[Index].Directions := [-Along, Across, -Across]
+    else if IsLastEnd then
+      Result[Index].Directions := [Along, Across, -Across]
+    else if IsValley then
+      Result[Index].Directions := [-Across, Across]
+    else
+      Result[Index].Directions := [Across, -Across];
   end;
 end;
 
 function TChartSeriesRenderer.PairedEndGroups(const Series: TChartSeries): TArray<TArray<TValueLabelCandidate>>;
 begin
-  const Amount = ValueLabelOffset;
-
   var StartGroup: TArray<TValueLabelCandidate>;
   var EndGroup: TArray<TValueLabelCandidate>;
   SetLength(StartGroup, Length(Series.Values));
@@ -2368,14 +2497,15 @@ begin
     const CategoryPixel = FGeometry.CategoryCenter(Index);
     const StartValue = Series.Values[Index];
     const EndValue = Series.EndValues[Index];
-    const AwayFromStartSign = Sign(FGeometry.MapValue(EndValue) - FGeometry.MapValue(StartValue));
+    const StartPixel = FGeometry.MapValue(StartValue);
+    const EndPixel = FGeometry.MapValue(EndValue);
 
-    StartGroup[Index].AnchorPoint := FGeometry.OffsetAlongValueAxis(
-      FGeometry.CategoryValuePoint(CategoryPixel, StartValue), -AwayFromStartSign * Amount);
+    StartGroup[Index].MarkPoint := FGeometry.CategoryValuePoint(CategoryPixel, StartValue);
+    StartGroup[Index].Directions := [AwayAlongValueAxis(EndPixel, StartPixel)];
     StartGroup[Index].Value := StartValue;
 
-    EndGroup[Index].AnchorPoint := FGeometry.OffsetAlongValueAxis(
-      FGeometry.CategoryValuePoint(CategoryPixel, EndValue), AwayFromStartSign * Amount);
+    EndGroup[Index].MarkPoint := FGeometry.CategoryValuePoint(CategoryPixel, EndValue);
+    EndGroup[Index].Directions := [AwayAlongValueAxis(StartPixel, EndPixel)];
     EndGroup[Index].Value := EndValue;
   end;
 
@@ -2417,8 +2547,8 @@ begin
   for var Index := 0 to High(BarSeries.Values) do
   begin
     const ValuePixel = FGeometry.MapValue(BarSeries.Values[Index]);
-    Group[Index].AnchorPoint := BarValueLabelPoint(FGeometry.CategoryCenter(Index), ValuePixel, BaselinePixel);
-    Group[Index].Value := BarSeries.Values[Index];
+    Group[Index] := BarLabelCandidate(FGeometry.CategoryCenter(Index), ValuePixel, BaselinePixel,
+                                      BarSeries.Values[Index]);
   end;
 
   Result := [Group];
@@ -2436,6 +2566,11 @@ begin
   end;
 end;
 
+function TXYSeriesRenderer.ConnectsPoints: Boolean;
+begin
+  Result := True;
+end;
+
 /// <summary>
 /// One label group per ordinary series. A range band draws no marks of its own, so it
 /// contributes no value-label candidates either.
@@ -2449,7 +2584,8 @@ begin
     if CurrentSeries.IsRangeBand then
       Continue;
 
-    Result := Result + [OffsetPointGroup(FGeometry.SeriesLinePoints(CurrentSeries), CurrentSeries.Values)];
+    const Points = FGeometry.SeriesLinePoints(CurrentSeries);
+    Result := Result + [PointLabelGroup(Points, CurrentSeries.Values, ConnectsPoints)];
   end;
 end;
 
@@ -2520,6 +2656,11 @@ begin
   FCanvas.FillPolygon(FGeometry.AreaPolygonPoints(LinePoints, FGeometry.MapValue(0)), Color);
   FCanvas.DrawPolyline(LinePoints, Color, FStyle.SeriesLineWidth);
   AddPointHitTargets(SeriesIndex, Series, LinePoints, Color);
+end;
+
+function TScatterSeriesRenderer.ConnectsPoints: Boolean;
+begin
+  Result := False;
 end;
 
 procedure TScatterSeriesRenderer.Draw;
@@ -2614,7 +2755,7 @@ begin
   for var SeriesIndex := 0 to FPlot.Series.Count - 1 do
   begin
     const CurrentSeries = FPlot.Series[SeriesIndex];
-    Result[SeriesIndex] := OffsetPointGroup(SeriesPoints(CurrentSeries), CurrentSeries.Values);
+    Result[SeriesIndex] := PointLabelGroup(SeriesPoints(CurrentSeries), CurrentSeries.Values, False);
   end;
 end;
 
@@ -2697,8 +2838,8 @@ begin
     begin
       const CategoryPixel = FGeometry.CategoryCenter(CategoryIndex) + Offset;
       const ValuePixel = FGeometry.MapValue(GroupedSeries.Values[CategoryIndex]);
-      Group[CategoryIndex].AnchorPoint := BarValueLabelPoint(CategoryPixel, ValuePixel, BaselinePixel);
-      Group[CategoryIndex].Value := GroupedSeries.Values[CategoryIndex];
+      Group[CategoryIndex] := BarLabelCandidate(CategoryPixel, ValuePixel, BaselinePixel,
+                                                GroupedSeries.Values[CategoryIndex]);
     end;
     Result[SeriesIndex] := Group;
   end;
@@ -2815,9 +2956,8 @@ begin
         SegmentEnd := NegativeRunning;
       end;
 
-      Result[SeriesIndex][CategoryIndex].AnchorPoint :=
-        BarValueLabelPoint(CategoryPixel, FGeometry.MapValue(SegmentEnd), BaselinePixel);
-      Result[SeriesIndex][CategoryIndex].Value := RawValue;
+      Result[SeriesIndex][CategoryIndex] := BarLabelCandidate(CategoryPixel, FGeometry.MapValue(SegmentEnd),
+                                                              BaselinePixel, RawValue);
     end;
   end;
 end;
@@ -3778,7 +3918,8 @@ begin
     LegendEngine.Free;
   end;
 
-  FPlotBounds := ComputePlotBounds(ContentRect);
+  FPlotFrame := ComputePlotBounds(ContentRect);
+  FPlotBounds := InsetForLineEndLabels(FPlotFrame);
 end;
 
 function TChartRenderJob.DrawTitleAndSubtitle(const ContentRect: TRectF): Single;
@@ -3980,6 +4121,57 @@ begin
   end;
 end;
 
+/// <summary>
+/// The plot area pulled in from <c>PlotFrame</c> so the first and last value label of a
+/// line can sit before and after it rather than on it. The right edge already keeps half
+/// of the last X-axis label clear, so only what the labels need beyond that is added.
+/// </summary>
+function TChartRenderJob.InsetForLineEndLabels(const PlotFrame: TRectF): TRectF;
+begin
+  Result := PlotFrame;
+  Result.Left := Result.Left + LineEndLabelRoom(True);
+  Result.Right := Result.Right - Max(0, LineEndLabelRoom(False) - ComputeRightInset);
+end;
+
+/// <summary>
+/// The room the value labels of a line chart need before its first points, or after its
+/// last points: the widest of those labels, its box, and the gap to the point. Zero when
+/// no value labels are shown, for kinds other than <c>Line</c> and <c>Area</c>, and in a
+/// horizontal chart, whose lines start at the top rather than at the left.
+/// </summary>
+function TChartRenderJob.LineEndLabelRoom(const AtStart: Boolean): Single;
+begin
+  Result := 0;
+
+  const HasValueLabels = (FPlot.ValueLabels <> TValueLabelMode.None);
+  const IsLineKind = (FPlot.Kind in [TChartKind.Line, TChartKind.Area]);
+  const IsHorizontal = (FPlot.Orientation = TChartOrientation.Horizontal);
+  const NeedsRoom = (HasValueLabels and IsLineKind and not IsHorizontal);
+  if not NeedsRoom then
+    Exit;
+
+  var WidestLabel: Single := 0;
+  for var CurrentSeries in FPlot.Series do
+  begin
+    const HasLineEnds = (not CurrentSeries.IsRangeBand) and (Length(CurrentSeries.Values) > 1);
+    if not HasLineEnds then
+      Continue;
+
+    var EndValue: Double;
+    if AtStart then
+      EndValue := CurrentSeries.Values[0]
+    else
+      EndValue := CurrentSeries.Values[High(CurrentSeries.Values)];
+
+    const LabelWidth = FCanvas.MeasureText(ValueLabelText(EndValue), AxisTextStyle).Width;
+    WidestLabel := Max(WidestLabel, LabelWidth);
+  end;
+
+  const HasLabels = (WidestLabel > 0);
+  if HasLabels then
+    Result := WidestLabel + (2 * LabelBoxPaddingAtReferenceScale + ValueLabelGapAtReferenceScale) * FStyle.ScaleFactor;
+end;
+
 function TChartRenderJob.LeftEdgeAxisVisible(const IsHorizontal: Boolean): Boolean;
 begin
   if IsHorizontal then
@@ -4082,7 +4274,7 @@ end;
 /// </summary>
 function TChartRenderJob.AxisLabelRightEdge: Single;
 begin
-  Result := FPlotBounds.Left - LeftLabelGap - ComputeBubbleRadiusInset;
+  Result := FPlotFrame.Left - LeftLabelGap - ComputeBubbleRadiusInset;
 end;
 
 /// <summary>Where a label under the plot area starts, the counterpart of
@@ -4315,9 +4507,9 @@ end;
 function TChartRenderJob.PlotSpanAtValuePixel(const Pixel: Single): TArray<TPointF>;
 begin
   if FGeometry.IsHorizontal then
-    Result := [TPointF.Create(Pixel, FPlotBounds.Top), TPointF.Create(Pixel, FPlotBounds.Bottom)]
+    Result := [TPointF.Create(Pixel, FPlotFrame.Top), TPointF.Create(Pixel, FPlotFrame.Bottom)]
   else
-    Result := [TPointF.Create(FPlotBounds.Left, Pixel), TPointF.Create(FPlotBounds.Right, Pixel)];
+    Result := [TPointF.Create(FPlotFrame.Left, Pixel), TPointF.Create(FPlotFrame.Right, Pixel)];
 end;
 
 /// <summary>The counterpart of <c>PlotSpanAtValuePixel</c> for the category axis.</summary>
@@ -4459,9 +4651,14 @@ end;
 procedure TChartRenderJob.DrawValueLabelCandidate(const Placer: TChartLabelPlacer;
                                                   const Candidate: TValueLabelCandidate);
 begin
-  const LabelText = TAxisScale.FormatValue(Candidate.Value, FPlot.YAxis.UseThousandSeparator,
-                                           FPlot.YAxis.Decimals) + FPlot.YAxis.LabelSuffix;
-  Placer.DrawIfClear(Candidate.AnchorPoint, LabelText, AxisTextStyle);
+  Placer.DrawBesideIfClear(Candidate.MarkPoint, Candidate.Directions, ValueLabelText(Candidate.Value),
+                           AxisTextStyle);
+end;
+
+function TChartRenderJob.ValueLabelText(const Value: Double): string;
+begin
+  Result := TAxisScale.FormatValue(Value, FPlot.YAxis.UseThousandSeparator, FPlot.YAxis.Decimals) +
+            FPlot.YAxis.LabelSuffix;
 end;
 
 procedure TChartRenderJob.DrawAnnotations;
@@ -4520,11 +4717,13 @@ begin
 
   const IsHorizontal = (FPlot.Orientation = TChartOrientation.Horizontal);
 
+  Result.Top := Max(Result.Top, FPlotFrame.Top);
+
   if LeftEdgeAxisVisible(IsHorizontal) then
-    Result.Left := Max(Result.Left, FPlotBounds.Left);
+    Result.Left := Max(Result.Left, FPlotFrame.Left);
 
   if BottomEdgeAxisVisible(IsHorizontal) then
-    Result.Bottom := Min(Result.Bottom, FPlotBounds.Bottom);
+    Result.Bottom := Min(Result.Bottom, FPlotFrame.Bottom);
 end;
 
 procedure TChartRenderJob.DrawSegmentAnnotation(const Annotation: TChartAnnotation);

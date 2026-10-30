@@ -109,9 +109,11 @@ Plot.ValueLabels := TValueLabelMode.Extremes;  // None, All, FirstAndLast, Extre
 
 ![Value labels](docs/images/value-labels-extremes.png)
 
-Labels are placed automatically, moved inside the plot when they would cover an axis label,
-and skipped when they would collide with a label already drawn. The result is deterministic,
-so a chart looks the same on every run.
+Labels are placed automatically beside the point they label: above a point, past the end of
+a bar, and before and after the ends of a line, which gets room for them. A label moves
+inside the plot when it would cover an axis label, and is skipped when it would collide
+with a label already drawn. The result is deterministic, so a chart looks the same on every
+run.
 
 Pie and donut segments label themselves, "Fossil (70%)" by default. When the legend already
 names the categories, show the share alone:
