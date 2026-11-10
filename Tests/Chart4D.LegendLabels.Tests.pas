@@ -71,6 +71,14 @@ type
 
     [Test]
     procedure LegendLabelDecimals_DutchValueAxisLocale_UsesCommaDecimalSeparator;
+
+    [Test]
+    [TestCase('Hidden by default', 'Top,False,0')]
+    [TestCase('Shown on request', 'Top,True,1')]
+    [TestCase('Position None wins', 'None,True,0')]
+    procedure Legend_SingleNamedSeries_FollowsLegendForSingleItem(const Position: TLegendPosition;
+                                                                   const ForSingleItem: Boolean;
+                                                                   const ExpectedEntries: Integer);
   end;
 
 implementation
@@ -190,6 +198,27 @@ begin
   RenderPieThirds(TLegendLabelMode.Percentage, 1, TAxisOptions.Default);
 
   Assert.AreEqual(3, CountOfText('33.3%'));
+end;
+
+procedure TLegendLabelTests.Legend_SingleNamedSeries_FollowsLegendForSingleItem(const Position: TLegendPosition;
+                                                                               const ForSingleItem: Boolean;
+                                                                               const ExpectedEntries: Integer);
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Kind := TChartKind.Bar;
+    Plot.Categories := ['2025', '2026'];
+    Plot.AddSeries('Wind', [30, 40]);
+    Plot.LegendPosition := Position;
+    Plot.LegendForSingleItem := ForSingleItem;
+
+    var HitMap: TArray<TChartHitTarget>;
+    TChartRenderer.Render(Plot, FCanvas, ChartWidth, ChartHeight, HitMap);
+  finally
+    Plot.Free;
+  end;
+
+  Assert.AreEqual(ExpectedEntries, CountOfText('Wind'));
 end;
 
 procedure TLegendLabelTests.LegendLabelDecimals_DutchValueAxisLocale_UsesCommaDecimalSeparator;

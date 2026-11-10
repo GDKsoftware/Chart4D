@@ -151,6 +151,9 @@ whichever of the text color and white reads better. Set it to 3 to keep dark tex
 mid-tone wedges, or to 1 to never switch. Value labels and text annotations use the same
 box color; the hover tooltip always keeps its white box.
 
+The legend appears once it has two entries. To draw it for a single named series as well,
+set `Plot.LegendForSingleItem := True`.
+
 A legend entry shows the series name, or the category of a pie or donut. It can show the
 value and the share of the total as well:
 
@@ -446,7 +449,7 @@ search path, then create the control in code.
 
 Drop a `TChart4D` on a form and the Object Inspector carries the settings that hold a
 single value: `Kind`, `Title`, `Subtitle`, `Source`, `Orientation`, `StackMode`,
-`LegendPosition`, `LegendReversed`, `ValueLabels`, `HighlightedSeriesIndex`,
+`LegendPosition`, `LegendReversed`, `LegendForSingleItem`, `ValueLabels`, `HighlightedSeriesIndex`,
 `DonutCenterText` and `ShowTooltips`. Each one mirrors the property of the same name on
 `Plot`, so setting it in the designer and setting it in code do the same thing.
 

@@ -55,6 +55,7 @@ type
     LayoutToolbar: TLayout;
     ComboBoxSample: TComboBox;
     ButtonExportPng: TButton;
+    CheckBoxLegendForSingleItem: TCheckBox;
     LayoutSide: TLayout;
     LabelExplanation: TLabel;
     MemoCode: TMemo;
@@ -64,6 +65,7 @@ type
     procedure FormCreate(Sender: TObject);
     procedure ComboBoxSampleChange(Sender: TObject);
     procedure ButtonExportPngClick(Sender: TObject);
+    procedure CheckBoxLegendForSingleItemChange(Sender: TObject);
     procedure ChartAfterRender(Sender: TObject; const Canvas: IChartCanvas; const Layout: TChartRenderLayout);
 
   private
@@ -121,6 +123,11 @@ end;
 procedure TMainForm.ComboBoxSampleChange(Sender: TObject);
 begin
   ApplySelectedSample;
+end;
+
+procedure TMainForm.CheckBoxLegendForSingleItemChange(Sender: TObject);
+begin
+  Chart.LegendForSingleItem := CheckBoxLegendForSingleItem.IsChecked;
 end;
 
 procedure TMainForm.ButtonExportPngClick(Sender: TObject);

@@ -3912,7 +3912,9 @@ begin
   const LegendEngine = TLegendEngine.Create(FPlot, FCanvas, FStyle);
   try
     const LegendItems = LegendEngine.BuildItems;
-    const ShowLegend = (FPlot.LegendPosition <> TLegendPosition.None) and (Length(LegendItems) > 1);
+    const HasEnoughItems = ((Length(LegendItems) > 1) or
+                            (FPlot.LegendForSingleItem and (Length(LegendItems) = 1)));
+    const ShowLegend = ((FPlot.LegendPosition <> TLegendPosition.None) and HasEnoughItems);
     if ShowLegend then
       ContentRect := LegendEngine.ApplyLayout(ContentRect, LegendItems);
   finally

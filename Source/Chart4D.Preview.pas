@@ -85,6 +85,7 @@ begin
   Preview.StackMode := Settings.StackMode;
   Preview.LegendPosition := Settings.LegendPosition;
   Preview.LegendReversed := Settings.LegendReversed;
+  Preview.LegendForSingleItem := Settings.LegendForSingleItem;
   Preview.LegendLabels := Settings.LegendLabels;
   Preview.LegendLabelDecimals := Settings.LegendLabelDecimals;
   Preview.ValueLabels := Settings.ValueLabels;

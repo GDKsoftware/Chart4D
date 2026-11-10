@@ -515,6 +515,7 @@ type
     property StackMode: TStackMode ...;           // default Values
     property LegendPosition: TLegendPosition ...; // default Top
     property LegendReversed: Boolean ...;
+    property LegendForSingleItem: Boolean ...;    // default False
     property LegendLabels: TLegendLabelMode ...;       // default Name; see 4.32
     property LegendLabelDecimals: Integer ...;         // default AutomaticDecimals; see 4.32
     property Annotations: TArray<TChartAnnotation> read ...;
@@ -597,7 +598,8 @@ sides):
    subtitle block into the content rect it hands to the plot area.
 3. Subtitle with 9 px margin above and below, when non-empty, wrapped exactly like the title
    and sharing the same `WrapTextLines`/line-height rule, using its own font size.
-4. Legend when `LegendPosition = Top` and more than one named series: a horizontal
+4. Legend when `LegendPosition = Top` and more than one named series, or exactly one
+   when `LegendForSingleItem` is set: a horizontal
    left-aligned row of items (14x14 color swatch, 6 px gap, series name, 24 px between
    items), wrapping to extra rows when needed. `LegendReversed` reverses item order.
    Positions Right/Bottom/Left: vertical or bottom variants (simple implementations
@@ -764,6 +766,7 @@ type
     property StackMode: TStackMode default TStackMode.Values;
     property LegendPosition: TLegendPosition default TLegendPosition.Top;
     property LegendReversed: Boolean default False;
+    property LegendForSingleItem: Boolean default False;
     property ValueLabels: TValueLabelMode default TValueLabelMode.None;
     property HighlightedSeriesIndex: Integer default NoHighlightedSeries;
     property DonutCenterText: string;
