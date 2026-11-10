@@ -186,6 +186,8 @@ type
     procedure SetLegendPosition(const Value: TLegendPosition);
     function GetLegendReversed: Boolean;
     procedure SetLegendReversed(const Value: Boolean);
+    function GetLegendForSingleItem: Boolean;
+    procedure SetLegendForSingleItem(const Value: Boolean);
     function GetLegendLabels: TLegendLabelMode;
     procedure SetLegendLabels(const Value: TLegendLabelMode);
     function GetLegendLabelDecimals: Integer;
@@ -256,6 +258,8 @@ type
       default TLegendPosition.Top;
     /// <summary>Whether the legend lists its entries in reverse. Mirrors <c>Plot.LegendReversed</c>.</summary>
     property LegendReversed: Boolean read GetLegendReversed write SetLegendReversed default False;
+    /// <summary>Whether a legend with a single entry is drawn. Mirrors <c>Plot.LegendForSingleItem</c>.</summary>
+    property LegendForSingleItem: Boolean read GetLegendForSingleItem write SetLegendForSingleItem default False;
     /// <summary>What each legend entry shows. Mirrors <c>Plot.LegendLabels</c>.</summary>
     property LegendLabels: TLegendLabelMode read GetLegendLabels write SetLegendLabels
       default TLegendLabelMode.Name;
@@ -695,6 +699,16 @@ end;
 procedure TChart4D.SetLegendReversed(const Value: Boolean);
 begin
   FPlot.LegendReversed := Value;
+end;
+
+function TChart4D.GetLegendForSingleItem: Boolean;
+begin
+  Result := FPlot.LegendForSingleItem;
+end;
+
+procedure TChart4D.SetLegendForSingleItem(const Value: Boolean);
+begin
+  FPlot.LegendForSingleItem := Value;
 end;
 
 function TChart4D.GetLegendLabels: TLegendLabelMode;

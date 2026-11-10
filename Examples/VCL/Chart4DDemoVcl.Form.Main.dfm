@@ -39,6 +39,15 @@ object FormMain: TFormMain
       TabOrder = 1
       OnClick = ButtonExportPngClick
     end
+    object CheckBoxLegendForSingleItem: TCheckBox
+      Left = 412
+      Top = 8
+      Width = 160
+      Height = 17
+      Caption = 'Legend for one entry'
+      TabOrder = 2
+      OnClick = CheckBoxLegendForSingleItemClick
+    end
   end
   object PanelSide: TPanel
     Left = 800

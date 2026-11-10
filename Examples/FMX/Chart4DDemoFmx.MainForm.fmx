@@ -35,6 +35,16 @@ object MainForm: TMainForm
       Text = 'Export PNG'
       OnClick = ButtonExportPngClick
     end
+    object CheckBoxLegendForSingleItem: TCheckBox
+      Position.X = 440.000000000000000000
+      Position.Y = 13.000000000000000000
+      Size.Width = 180.000000000000000000
+      Size.Height = 19.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 2
+      Text = 'Legend for one entry'
+      OnChange = CheckBoxLegendForSingleItemChange
+    end
   end
   object LayoutSide: TLayout
     Align = Right

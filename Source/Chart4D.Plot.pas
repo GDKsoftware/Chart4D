@@ -48,6 +48,7 @@ type
     FStackMode: TStackMode;
     FLegendPosition: TLegendPosition;
     FLegendReversed: Boolean;
+    FLegendForSingleItem: Boolean;
     FLegendLabels: TLegendLabelMode;
     FLegendLabelDecimals: Integer;
     FAnnotations: TArray<TChartAnnotation>;
@@ -74,6 +75,7 @@ type
     procedure SetStackMode(const Value: TStackMode);
     procedure SetLegendPosition(const Value: TLegendPosition);
     procedure SetLegendReversed(const Value: Boolean);
+    procedure SetLegendForSingleItem(const Value: Boolean);
     procedure SetLegendLabels(const Value: TLegendLabelMode);
     procedure SetLegendLabelDecimals(const Value: Integer);
     procedure SetValueLabels(const Value: TValueLabelMode);
@@ -220,6 +222,11 @@ type
     property LegendPosition: TLegendPosition read FLegendPosition write SetLegendPosition;
     /// <summary>Whether legend items are drawn in reverse series order.</summary>
     property LegendReversed: Boolean read FLegendReversed write SetLegendReversed;
+    /// <summary>
+    /// Whether the legend is drawn when it holds a single entry: one named series, or one
+    /// category of a <c>Pie</c> or <c>Donut</c>. Default <c>False</c>.
+    /// </summary>
+    property LegendForSingleItem: Boolean read FLegendForSingleItem write SetLegendForSingleItem;
     /// <summary>
     /// What each legend entry shows. Default <c>Name</c>. The value is the category's
     /// value for a <c>Pie</c> or <c>Donut</c>, and the sum of the series' values for every
@@ -669,6 +676,12 @@ end;
 procedure TChartPlot.SetLegendReversed(const Value: Boolean);
 begin
   FLegendReversed := Value;
+  NotifyChanged;
+end;
+
+procedure TChartPlot.SetLegendForSingleItem(const Value: Boolean);
+begin
+  FLegendForSingleItem := Value;
   NotifyChanged;
 end;
 
