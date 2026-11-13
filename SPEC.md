@@ -17,7 +17,7 @@ segments, arrows, reference lines, shaded range overlays) and uncertainty/range 
 series. Value labels with deterministic placement (4.12) and series highlighting (4.13).
 Legend control. Axis label formatting, including locale-aware formatting (4.14),
 logarithmic value axes (4.15) and date axes (4.16). PNG export
-with publication finishing: left-aligned title/subtitle, footer with source text (left),
+with publication finishing: left-aligned title/subtitle by default, footer with source text (left),
 a full-width separator line above the footer, and an optional logo (right). Default
 export size 640x450 pixels. Hover interaction on both controls: nearest data point
 highlighting with an in-chart tooltip (see 4.11), on by default.
@@ -505,6 +505,8 @@ type
     property Kind: TChartKind ...;
     property Title: string ...;
     property Subtitle: string ...;
+    property TitleAlignment: TTextAlignH ...;     // default Left
+    property SubtitleAlignment: TTextAlignH ...;  // default Left
     property Source: string ...;            // footer text, e.g. 'Source: World Bank'
     property LogoFilePath: string ...;      // optional footer logo (PNG)
     property Categories: TArray<string> ...;
@@ -583,7 +585,8 @@ Layout (top to bottom; all sizes scaled by `Style.ScaleFactor`; outer margin 16 
 sides):
 
 1. Background fill.
-2. Title (bold, left-aligned at outer margin), when non-empty. Wrapped onto as many lines
+2. Title (bold, at the left outer margin, or centred or at the right outer margin as
+   `TitleAlignment` says), when non-empty. Wrapped onto as many lines
    as needed when wider than the space between the outer margins: `WrapTextLines` measures
    each candidate line with `IChartCanvas.MeasureText` and breaks on word boundaries, adding
    one word at a time until the next word would not fit, at which point that word starts a
@@ -598,7 +601,8 @@ sides):
    subtitle wraps, since `PerformLayout` already threads the returned bottom of the title/
    subtitle block into the content rect it hands to the plot area.
 3. Subtitle with 9 px margin above and below, when non-empty, wrapped exactly like the title
-   and sharing the same `WrapTextLines`/line-height rule, using its own font size.
+   and sharing the same `WrapTextLines`/line-height rule, using its own font size and
+   aligned by `SubtitleAlignment`.
 4. Legend when `LegendPosition = Top` and more than one named series, or exactly one
    when `LegendForSingleItem` is set: a horizontal
    left-aligned row of items (14x14 color swatch, 6 px gap, series name, 24 px between
@@ -762,6 +766,8 @@ type
     property Kind: TChartKind default TChartKind.Line;
     property Title: string;
     property Subtitle: string;
+    property TitleAlignment: TTextAlignH default TTextAlignH.Left;
+    property SubtitleAlignment: TTextAlignH default TTextAlignH.Left;
     property Source: string;
     property Orientation: TChartOrientation default TChartOrientation.Vertical;
     property StackMode: TStackMode default TStackMode.Values;

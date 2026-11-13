@@ -196,6 +196,10 @@ type
     procedure SetTitle(const Value: string);
     function GetSubtitle: string;
     procedure SetSubtitle(const Value: string);
+    function GetTitleAlignment: TTextAlignH;
+    procedure SetTitleAlignment(const Value: TTextAlignH);
+    function GetSubtitleAlignment: TTextAlignH;
+    procedure SetSubtitleAlignment(const Value: TTextAlignH);
     function GetSource: string;
     procedure SetSource(const Value: string);
     function GetKind: TChartKind;
@@ -269,6 +273,11 @@ type
     property Title: string read GetTitle write SetTitle;
     /// <summary>The line under the title that says what is measured. Mirrors <c>Plot.Subtitle</c>.</summary>
     property Subtitle: string read GetSubtitle write SetSubtitle;
+    /// <summary>Where the title sits between the margins. Mirrors <c>Plot.TitleAlignment</c>.</summary>
+    property TitleAlignment: TTextAlignH read GetTitleAlignment write SetTitleAlignment default TTextAlignH.Left;
+    /// <summary>Where the subtitle sits between the margins. Mirrors <c>Plot.SubtitleAlignment</c>.</summary>
+    property SubtitleAlignment: TTextAlignH read GetSubtitleAlignment write SetSubtitleAlignment
+      default TTextAlignH.Left;
     /// <summary>The source credit in the footer. Mirrors <c>Plot.Source</c>.</summary>
     property Source: string read GetSource write SetSource;
     /// <summary>The direction categories run in. Mirrors <c>Plot.Orientation</c>.</summary>
@@ -702,6 +711,26 @@ end;
 procedure TChart4D.SetSubtitle(const Value: string);
 begin
   FPlot.Subtitle := Value;
+end;
+
+function TChart4D.GetTitleAlignment: TTextAlignH;
+begin
+  Result := FPlot.TitleAlignment;
+end;
+
+procedure TChart4D.SetTitleAlignment(const Value: TTextAlignH);
+begin
+  FPlot.TitleAlignment := Value;
+end;
+
+function TChart4D.GetSubtitleAlignment: TTextAlignH;
+begin
+  Result := FPlot.SubtitleAlignment;
+end;
+
+procedure TChart4D.SetSubtitleAlignment(const Value: TTextAlignH);
+begin
+  FPlot.SubtitleAlignment := Value;
 end;
 
 function TChart4D.GetSource: string;

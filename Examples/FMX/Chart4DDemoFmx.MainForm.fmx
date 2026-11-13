@@ -45,6 +45,52 @@ object MainForm: TMainForm
       Text = 'Legend for one entry'
       OnChange = CheckBoxLegendForSingleItemChange
     end
+    object ComboBoxTitleAlignment: TComboBox
+      ItemIndex = 0
+      Position.X = 632.000000000000000000
+      Position.Y = 8.000000000000000000
+      Size.Width = 140.000000000000000000
+      Size.Height = 30.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 3
+      OnChange = ComboBoxTitleAlignmentChange
+      object ListBoxItemTitleLeft: TListBoxItem
+        IsSelected = True
+        TabOrder = 0
+        Text = 'Title left'
+      end
+      object ListBoxItemTitleCentred: TListBoxItem
+        TabOrder = 1
+        Text = 'Title centred'
+      end
+      object ListBoxItemTitleRight: TListBoxItem
+        TabOrder = 2
+        Text = 'Title right'
+      end
+    end
+    object ComboBoxSubtitleAlignment: TComboBox
+      ItemIndex = 0
+      Position.X = 780.000000000000000000
+      Position.Y = 8.000000000000000000
+      Size.Width = 160.000000000000000000
+      Size.Height = 30.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 4
+      OnChange = ComboBoxSubtitleAlignmentChange
+      object ListBoxItemSubtitleLeft: TListBoxItem
+        IsSelected = True
+        TabOrder = 0
+        Text = 'Subtitle left'
+      end
+      object ListBoxItemSubtitleCentred: TListBoxItem
+        TabOrder = 1
+        Text = 'Subtitle centred'
+      end
+      object ListBoxItemSubtitleRight: TListBoxItem
+        TabOrder = 2
+        Text = 'Subtitle right'
+      end
+    end
   end
   object LayoutSide: TLayout
     Align = Right

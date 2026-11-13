@@ -56,6 +56,14 @@ type
     ComboBoxSample: TComboBox;
     ButtonExportPng: TButton;
     CheckBoxLegendForSingleItem: TCheckBox;
+    ComboBoxTitleAlignment: TComboBox;
+    ListBoxItemTitleLeft: TListBoxItem;
+    ListBoxItemTitleCentred: TListBoxItem;
+    ListBoxItemTitleRight: TListBoxItem;
+    ComboBoxSubtitleAlignment: TComboBox;
+    ListBoxItemSubtitleLeft: TListBoxItem;
+    ListBoxItemSubtitleCentred: TListBoxItem;
+    ListBoxItemSubtitleRight: TListBoxItem;
     LayoutSide: TLayout;
     LabelExplanation: TLabel;
     MemoCode: TMemo;
@@ -66,12 +74,18 @@ type
     procedure ComboBoxSampleChange(Sender: TObject);
     procedure ButtonExportPngClick(Sender: TObject);
     procedure CheckBoxLegendForSingleItemChange(Sender: TObject);
+    procedure ComboBoxTitleAlignmentChange(Sender: TObject);
+    procedure ComboBoxSubtitleAlignmentChange(Sender: TObject);
     procedure ChartAfterRender(Sender: TObject; const Canvas: IChartCanvas; const Layout: TChartRenderLayout);
 
   private
-    FSamples: TArray<TDemoSample>;
-    FLogoFilePath: string;
-    FDecorate: TDemoDecorateProc;
+    const
+      Alignments: array[0..2] of TTextAlignH = (TTextAlignH.Left, TTextAlignH.Center, TTextAlignH.Right);
+
+    var
+      FSamples: TArray<TDemoSample>;
+      FLogoFilePath: string;
+      FDecorate: TDemoDecorateProc;
 
     function ResolveLogoFilePath: string;
     procedure PopulateSampleItems;
@@ -128,6 +142,16 @@ end;
 procedure TMainForm.CheckBoxLegendForSingleItemChange(Sender: TObject);
 begin
   Chart.LegendForSingleItem := CheckBoxLegendForSingleItem.IsChecked;
+end;
+
+procedure TMainForm.ComboBoxTitleAlignmentChange(Sender: TObject);
+begin
+  Chart.TitleAlignment := Alignments[ComboBoxTitleAlignment.ItemIndex];
+end;
+
+procedure TMainForm.ComboBoxSubtitleAlignmentChange(Sender: TObject);
+begin
+  Chart.SubtitleAlignment := Alignments[ComboBoxSubtitleAlignment.ItemIndex];
 end;
 
 procedure TMainForm.ButtonExportPngClick(Sender: TObject);

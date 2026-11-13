@@ -48,6 +48,36 @@ object FormMain: TFormMain
       TabOrder = 2
       OnClick = CheckBoxLegendForSingleItemClick
     end
+    object ComboBoxTitleAlignment: TComboBox
+      Left = 580
+      Top = 4
+      Width = 130
+      Height = 23
+      Style = csDropDownList
+      ItemIndex = 0
+      TabOrder = 3
+      Text = 'Title left'
+      OnChange = ComboBoxTitleAlignmentChange
+      Items.Strings = (
+        'Title left'
+        'Title centred'
+        'Title right')
+    end
+    object ComboBoxSubtitleAlignment: TComboBox
+      Left = 718
+      Top = 4
+      Width = 150
+      Height = 23
+      Style = csDropDownList
+      ItemIndex = 0
+      TabOrder = 4
+      Text = 'Subtitle left'
+      OnChange = ComboBoxSubtitleAlignmentChange
+      Items.Strings = (
+        'Subtitle left'
+        'Subtitle centred'
+        'Subtitle right')
+    end
   end
   object PanelSide: TPanel
     Left = 800

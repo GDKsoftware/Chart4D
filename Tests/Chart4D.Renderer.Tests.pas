@@ -22,7 +22,8 @@ uses
   DUnitX.TestFramework,
   Chart4D.Canvas.Interfaces,
   Chart4D.Tests.Asserts,
-  Chart4D.Tests.RecordingCanvas;
+  Chart4D.Tests.RecordingCanvas,
+  Chart4D.Types;
 
 type
   [TestFixture]
@@ -198,6 +199,14 @@ type
     procedure Render_ShortTitle_DrawsAsSingleLine;
 
     [Test]
+    [TestCase('Both left', 'Left,Left,16,16')]
+    [TestCase('Title centred', 'Center,Left,320,16')]
+    [TestCase('Subtitle right', 'Left,Right,16,624')]
+    procedure Render_TitleAndSubtitleAlignment_AnchorEachBetweenTheMargins(const TitleAlignment: TTextAlignH;
+                                                                          const SubtitleAlignment: TTextAlignH;
+                                                                          const TitleX, SubtitleX: Single);
+
+    [Test]
     procedure Render_LongTitle_WrapsOntoTwoLines;
 
     [Test]
@@ -268,8 +277,7 @@ uses
   Chart4D.Plot,
   Chart4D.Renderer,
   Chart4D.Style,
-  Chart4D.Tooltip,
-  Chart4D.Types;
+  Chart4D.Tooltip;
 
 procedure TChartRendererTests.Setup;
 begin
@@ -1798,6 +1806,47 @@ begin
     end;
 
     Assert.AreEqual(1, TitleCalls, 'A title that fits within the available width must draw as a single line');
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_TitleAndSubtitleAlignment_AnchorEachBetweenTheMargins(
+  const TitleAlignment: TTextAlignH; const SubtitleAlignment: TTextAlignH; const TitleX, SubtitleX: Single);
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Title := 'Short title';
+    Plot.Subtitle := 'Short subtitle';
+    Plot.TitleAlignment := TitleAlignment;
+    Plot.SubtitleAlignment := SubtitleAlignment;
+    Plot.Categories := ['A', 'B'];
+    Plot.AddSeries('Only', [1, 2]);
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    var TitleCalls := 0;
+    var SubtitleCalls := 0;
+    for var Call in FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawText) do
+    begin
+      const IsTitle = (Call.Text = Plot.Title);
+      const IsSubtitle = (Call.Text = Plot.Subtitle);
+      if IsTitle then
+      begin
+        Inc(TitleCalls);
+        Assert.AreEqual(TitleX, Call.TextX, 0.01, 'title anchor');
+        Assert.AreEqual(TitleAlignment, Call.AlignH, 'title alignment');
+      end
+      else if IsSubtitle then
+      begin
+        Inc(SubtitleCalls);
+        Assert.AreEqual(SubtitleX, Call.TextX, 0.01, 'subtitle anchor');
+        Assert.AreEqual(SubtitleAlignment, Call.AlignH, 'subtitle alignment');
+      end;
+    end;
+
+    Assert.AreEqual(1, TitleCalls, 'title drawn once');
+    Assert.AreEqual(1, SubtitleCalls, 'subtitle drawn once');
   finally
     Plot.Free;
   end;
