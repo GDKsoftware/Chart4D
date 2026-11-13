@@ -1052,8 +1052,6 @@ type
     function ComputeFooterHeight: Single;
     function HasFooterContent: Boolean;
 
-    function OuterMargin: Single;
-
     function ComputePlotBounds(const ContentRect: TRectF): TRectF;
     function ComputeTopInset: Single;
     function ComputeFooterClearance: Single;
@@ -1135,9 +1133,9 @@ type
     function AnnotationFontSize(const Annotation: TChartAnnotation): Single;
 
     procedure DrawFooter;
-    procedure DrawFooterSeparator(const FooterTop, Margin: Single);
-    procedure DrawFooterSource(const FooterTop, FooterHeight, Margin: Single);
-    procedure DrawFooterLogo(const FooterTop, FooterHeight, Margin: Single);
+    procedure DrawFooterSeparator(const FooterBounds: TRectF);
+    procedure DrawFooterSource(const FooterBounds: TRectF);
+    procedure DrawFooterLogo(const FooterBounds: TRectF);
 
   public
     constructor Create(const Plot: TChartPlot; const Canvas: IChartCanvas; const Width, Height: Single);
@@ -3896,17 +3894,11 @@ begin
   end;
 end;
 
-function TChartRenderJob.OuterMargin: Single;
-begin
-  Result := 16 * FStyle.ScaleFactor;
-end;
-
 procedure TChartRenderJob.PerformLayout;
 begin
   FCanvas.FillBackground(FWidth, FHeight, FStyle.BackgroundColor);
 
-  const Margin = OuterMargin;
-  var ContentRect := TRectF.Create(Margin, Margin, FWidth - Margin, FHeight - Margin);
+  var ContentRect := MarginBounds;
   ContentRect.Top := DrawTitleAndSubtitle(ContentRect);
   ContentRect.Bottom := ContentRect.Bottom - ComputeFooterHeight;
 
@@ -4732,9 +4724,13 @@ end;
 
 function TChartRenderJob.MarginBounds: TRectF;
 begin
-  const Margin = OuterMargin;
+  const Padding = FStyle.Padding;
+  const Scale = FStyle.ScaleFactor;
 
-  Result := TRectF.Create(Margin, Margin, FWidth - Margin, FHeight - Margin);
+  Result := TRectF.Create(Padding.Left * Scale,
+                          Padding.Top * Scale,
+                          FWidth - Padding.Right * Scale,
+                          FHeight - Padding.Bottom * Scale);
 end;
 
 function TChartRenderJob.ValueLabelClampBounds: TRectF;
@@ -4813,39 +4809,38 @@ begin
   if not HasFooterContent then
     Exit;
 
-  const FooterHeight = ComputeFooterHeight;
-  const Margin = OuterMargin;
-  const FooterTop = FHeight - Margin - FooterHeight;
+  var FooterBounds := MarginBounds;
+  FooterBounds.Top := FooterBounds.Bottom - ComputeFooterHeight;
 
-  DrawFooterSeparator(FooterTop, Margin);
-  DrawFooterSource(FooterTop, FooterHeight, Margin);
-  DrawFooterLogo(FooterTop, FooterHeight, Margin);
+  DrawFooterSeparator(FooterBounds);
+  DrawFooterSource(FooterBounds);
+  DrawFooterLogo(FooterBounds);
 end;
 
-procedure TChartRenderJob.DrawFooterSeparator(const FooterTop, Margin: Single);
+procedure TChartRenderJob.DrawFooterSeparator(const FooterBounds: TRectF);
 begin
-  FCanvas.DrawLine(Margin, FooterTop, FWidth - Margin, FooterTop, ChartTextDark, 1 * FStyle.ScaleFactor, False);
+  FCanvas.DrawLine(FooterBounds.Left, FooterBounds.Top, FooterBounds.Right, FooterBounds.Top,
+                   ChartTextDark, 1 * FStyle.ScaleFactor, False);
 end;
 
-procedure TChartRenderJob.DrawFooterSource(const FooterTop, FooterHeight, Margin: Single);
+procedure TChartRenderJob.DrawFooterSource(const FooterBounds: TRectF);
 begin
   const HasSource = (FPlot.Source <> '');
   if not HasSource then
     Exit;
 
   const TextStyle = TChartTextStyle.Create(FStyle.FontName, FStyle.CaptionFontSize, False, FStyle.MutedTextColor);
-  const CenterY = FooterTop + FooterHeight / 2;
-  FCanvas.DrawText(Margin, CenterY, FPlot.Source, TextStyle, TTextAlignH.Left, TTextAlignV.Middle);
+  const CenterY = FooterBounds.Top + FooterBounds.Height / 2;
+  FCanvas.DrawText(FooterBounds.Left, CenterY, FPlot.Source, TextStyle, TTextAlignH.Left, TTextAlignV.Middle);
 end;
 
-procedure TChartRenderJob.DrawFooterLogo(const FooterTop, FooterHeight, Margin: Single);
+procedure TChartRenderJob.DrawFooterLogo(const FooterBounds: TRectF);
 begin
   const HasLogo = (FPlot.LogoFilePath <> '');
   if not HasLogo then
     Exit;
 
-  const Bounds = TRectF.Create(Margin, FooterTop, FWidth - Margin, FooterTop + FooterHeight);
-  FCanvas.DrawImage(FPlot.LogoFilePath, Bounds);
+  FCanvas.DrawImage(FPlot.LogoFilePath, FooterBounds);
 end;
 
 end.
