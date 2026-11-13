@@ -280,6 +280,9 @@ begin
 end;
 ```
 
+The tooltip text takes the footer's size, `Style.CaptionFontSize`. Set
+`Style.TooltipFontSize` to give it a size of its own.
+
 `SaveToPng` never draws a tooltip, so an export is always clean.
 
 ## Drawing your own additions

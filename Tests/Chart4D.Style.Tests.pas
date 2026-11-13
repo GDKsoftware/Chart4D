@@ -51,6 +51,9 @@ type
     procedure Default_CaptionFontSizeAndMutedColor_MatchEditorialStyle;
 
     [Test]
+    procedure Default_TooltipFontSize_FollowsCaptionFontSize;
+
+    [Test]
     procedure Default_GridColorAndWidth_MatchEditorialStyle;
 
     [Test]
@@ -174,6 +177,11 @@ procedure TChartStyleDefaultTests.Default_CaptionFontSizeAndMutedColor_MatchEdit
 begin
   Assert.AreEqual<Single>(16, FStyle.CaptionFontSize);
   Assert.AreEqual<TAlphaColor>(ChartTextMuted, FStyle.MutedTextColor);
+end;
+
+procedure TChartStyleDefaultTests.Default_TooltipFontSize_FollowsCaptionFontSize;
+begin
+  Assert.AreEqual<Single>(0, FStyle.TooltipFontSize);
 end;
 
 procedure TChartStyleDefaultTests.Default_GridColorAndWidth_MatchEditorialStyle;
