@@ -66,6 +66,23 @@ const
 
 type
   /// <summary>
+  /// The room kept free along each edge of a chart, in pixels at the reference size.
+  /// </summary>
+  TChartPadding = record
+    /// <summary>The room kept free along the left edge.</summary>
+    Left: Single;
+    /// <summary>The room kept free along the top edge.</summary>
+    Top: Single;
+    /// <summary>The room kept free along the right edge.</summary>
+    Right: Single;
+    /// <summary>The room kept free along the bottom edge.</summary>
+    Bottom: Single;
+
+    /// <summary>Returns a padding of <c>Value</c> on all four sides.</summary>
+    class function Uniform(const Value: Single): TChartPadding; static;
+  end;
+
+  /// <summary>
   /// The visual style applied when rendering a chart: fonts, sizes, and colors. Sizes
   /// are pixels at the 640x450 reference size, multiplied by <c>ScaleFactor</c> when
   /// rendering.
@@ -112,6 +129,12 @@ type
     SeriesLineWidth: Single;
     /// <summary>The scale factor applied to every size when rendering.</summary>
     ScaleFactor: Single;
+    /// <summary>
+    /// The room kept free between each edge of the chart and everything drawn on it: the
+    /// title, the plot, the legend and the footer. Default 16 on every side. 0 on a side
+    /// lets the content run up to that edge.
+    /// </summary>
+    Padding: TChartPadding;
     /// <summary>
     /// The radius, in pixels at the reference size, of a <c>Scatter</c> or <c>DotPlot</c>
     /// point whose series has no per-point <c>Sizes</c> (a plain, non-bubble point).
@@ -202,6 +225,14 @@ implementation
 uses
   System.Math;
 
+class function TChartPadding.Uniform(const Value: Single): TChartPadding;
+begin
+  Result.Left   := Value;
+  Result.Top    := Value;
+  Result.Right  := Value;
+  Result.Bottom := Value;
+end;
+
 class function TChartStyle.Default: TChartStyle;
 begin
   {$IFDEF MSWINDOWS}
@@ -227,6 +258,7 @@ begin
   Result.BaselineWidth := 2;
   Result.SeriesLineWidth := 3;
   Result.ScaleFactor := 1.0;
+  Result.Padding := TChartPadding.Uniform(16);
   Result.ScatterPointRadius := 4;
   Result.MinBubbleRadius := 4;
   Result.MaxBubbleRadius := 24;
