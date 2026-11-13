@@ -83,6 +83,11 @@ type
     AxisFontSize: Single;
     /// <summary>The footer caption font size in pixels at the reference size.</summary>
     CaptionFontSize: Single;
+    /// <summary>
+    /// The hover tooltip font size in pixels at the reference size. 0, the default and
+    /// what a zeroed record holds, means <c>CaptionFontSize</c>.
+    /// </summary>
+    TooltipFontSize: Single;
     /// <summary>The title text color.</summary>
     TitleColor: TAlphaColor;
     /// <summary>The subtitle, legend, and axis text color.</summary>
@@ -209,6 +214,7 @@ begin
   Result.LegendFontSize := 18;
   Result.AxisFontSize := 18;
   Result.CaptionFontSize := 16;
+  Result.TooltipFontSize := 0;
   Result.TitleColor := ChartTextDark;
   Result.TextColor := ChartTextDark;
   Result.MutedTextColor := ChartTextMuted;

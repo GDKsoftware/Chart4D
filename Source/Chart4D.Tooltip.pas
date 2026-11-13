@@ -36,6 +36,7 @@ type
     class function NormalizeAngleDegrees(const Angle: Single): Single; static;
     class function SectorContainsAngle(const PointAngle, StartAngle, SweepAngle: Single): Boolean; static;
 
+    class function FontSize(const Style: TChartStyle): Single; static;
     class function BuildLines(const Info: TChartHitInfo; const LocaleName: string;
                               const Decimals: Integer;
                               const UseThousandSeparator: Boolean): TArray<string>; static;
@@ -164,7 +165,7 @@ begin
   const HighlightRadius = 5 * Style.ScaleFactor;
   Canvas.FillCircle(Info.AnchorX, Info.AnchorY, HighlightRadius, Info.Color);
 
-  const TextStyle = TChartTextStyle.Create(Style.FontName, Style.CaptionFontSize, False, Style.TextColor);
+  const TextStyle = TChartTextStyle.Create(Style.FontName, FontSize(Style), False, Style.TextColor);
   const Lines = BuildLines(Info, LocaleName, Decimals, UseThousandSeparator);
   const Padding = 8 * Style.ScaleFactor;
   const LineHeight = Canvas.MeasureText(LineHeightSampleText, TextStyle).Height;
@@ -175,6 +176,17 @@ begin
 
   DrawBox(Canvas, Bounds, Style.ScaleFactor);
   DrawLines(Canvas, Lines, TextStyle, Bounds, Padding, LineHeight);
+end;
+
+class function TChartTooltip.FontSize(const Style: TChartStyle): Single;
+begin
+  const FollowsCaption = (Style.TooltipFontSize <= 0);
+  if FollowsCaption then
+    Result := Style.CaptionFontSize
+  else
+    Result := Style.TooltipFontSize;
+
+  Result := Result * Style.ScaleFactor;
 end;
 
 class function TChartTooltip.BuildLines(const Info: TChartHitInfo; const LocaleName: string;

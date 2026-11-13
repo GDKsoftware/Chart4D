@@ -84,6 +84,15 @@ type
     procedure Draw_StyleWithTransparentLabelBackground_KeepsTheWhiteTooltipBox;
 
     [Test]
+    procedure Draw_DefaultStyle_DrawsTextInCaptionFontSize;
+
+    [Test]
+    procedure Draw_TooltipFontSizeSet_DrawsTextInThatSize;
+
+    [Test]
+    procedure Draw_ScaleFactorTwo_DoublesTheTextSize;
+
+    [Test]
     procedure Draw_ThousandSeparator_GroupsTheValueDigits;
 
     [Test]
@@ -305,6 +314,43 @@ begin
 
   Assert.AreEqual(1, FRecordingCanvas.CountOfColor(TCanvasCallKind.FillRect, ChartLabelBackground),
     'The tooltip box must stay opaque white');
+end;
+
+procedure TChartTooltipTests.Draw_DefaultStyle_DrawsTextInCaptionFontSize;
+begin
+  const Info = BuildInfo('Netherlands', '1992', 77.4, 320, 225, ChartBlue);
+  var Style := TChartStyle.Default;
+  Style.CaptionFontSize := 20;
+
+  TChartTooltip.Draw(FCanvas, Style, Info, 640, 450);
+
+  const Text = FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawText)[0];
+  Assert.AreEqual<Single>(20, Text.TextStyle.Size);
+end;
+
+procedure TChartTooltipTests.Draw_TooltipFontSizeSet_DrawsTextInThatSize;
+begin
+  const Info = BuildInfo('Netherlands', '1992', 77.4, 320, 225, ChartBlue);
+  var Style := TChartStyle.Default;
+  Style.TooltipFontSize := 12;
+
+  TChartTooltip.Draw(FCanvas, Style, Info, 640, 450);
+
+  const Text = FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawText)[0];
+  Assert.AreEqual<Single>(12, Text.TextStyle.Size);
+end;
+
+procedure TChartTooltipTests.Draw_ScaleFactorTwo_DoublesTheTextSize;
+begin
+  const Info = BuildInfo('Netherlands', '1992', 77.4, 320, 225, ChartBlue);
+  var Style := TChartStyle.Default;
+  Style.TooltipFontSize := 12;
+  Style.ScaleFactor := 2.0;
+
+  TChartTooltip.Draw(FCanvas, Style, Info, 640, 450);
+
+  const Text = FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawText)[0];
+  Assert.AreEqual<Single>(24, Text.TextStyle.Size);
 end;
 
 procedure TChartTooltipTests.Draw_ThousandSeparator_GroupsTheValueDigits;

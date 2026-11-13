@@ -247,6 +247,7 @@ type
     LegendFontSize: Single;     // 18
     AxisFontSize: Single;       // 18
     CaptionFontSize: Single;    // 16
+    TooltipFontSize: Single;    // 0 = CaptionFontSize, see 4.11
     TitleColor: TAlphaColor;    // ChartTextDark
     TextColor: TAlphaColor;     // ChartTextDark
     MutedTextColor: TAlphaColor;// ChartTextMuted
@@ -944,7 +945,8 @@ positioned 12 px above the anchor, clamped inside the chart bounds, background w
 border $FFCBCBCB. The white is the constant `ChartLabelBackground`, never the style's
 `LabelBackgroundColor`: the tooltip floats over whatever ink is under the pointer, with no
 single color behind it to contrast against, so it keeps an opaque box whatever the labels
-do (4.29).
+do (4.29). The text is drawn in the style's `TooltipFontSize`, or in its `CaptionFontSize`
+when `TooltipFontSize` is 0, the default, and like the box it scales with `ScaleFactor`.
 
 Both controls (`Chart4D.VCL.pas`, `Chart4D.FMX.pas`):
 
