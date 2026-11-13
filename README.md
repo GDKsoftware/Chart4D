@@ -412,6 +412,14 @@ Style.ScaleFactor := 2.0;
 Plot.Style := Style;
 ```
 
+The title and the subtitle start at the left margin. Each can be centred or moved to the
+right margin on its own:
+
+```pascal
+Plot.TitleAlignment := TTextAlignH.Center;  // Left, Center, Right
+Plot.SubtitleAlignment := TTextAlignH.Right;
+```
+
 The palette:
 
 ```pascal
@@ -451,10 +459,11 @@ search path, then create the control in code.
 ### In the designer
 
 Drop a `TChart4D` on a form and the Object Inspector carries the settings that hold a
-single value: `Kind`, `Title`, `Subtitle`, `Source`, `Orientation`, `StackMode`,
-`LegendPosition`, `LegendReversed`, `LegendForSingleItem`, `ValueLabels`, `HighlightedSeriesIndex`,
-`DonutCenterText` and `ShowTooltips`. Each one mirrors the property of the same name on
-`Plot`, so setting it in the designer and setting it in code do the same thing.
+single value: `Kind`, `Title`, `Subtitle`, `TitleAlignment`, `SubtitleAlignment`, `Source`,
+`Orientation`, `StackMode`, `LegendPosition`, `LegendReversed`, `LegendForSingleItem`,
+`ValueLabels`, `HighlightedSeriesIndex`, `DonutCenterText` and `ShowTooltips`. Each one
+mirrors the property of the same name on `Plot`, so setting it in the designer and setting
+it in code do the same thing.
 
 Series, categories and annotations stay in code. They are lists rather than single values
 and do not stream to a DFM, so a control with an empty plot draws a sample chart in the

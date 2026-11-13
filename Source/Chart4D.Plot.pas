@@ -37,6 +37,8 @@ type
     FKind: TChartKind;
     FTitle: string;
     FSubtitle: string;
+    FTitleAlignment: TTextAlignH;
+    FSubtitleAlignment: TTextAlignH;
     FSource: string;
     FLogoFilePath: string;
     FCategories: TArray<string>;
@@ -63,6 +65,8 @@ type
     procedure SetKind(const Value: TChartKind);
     procedure SetTitle(const Value: string);
     procedure SetSubtitle(const Value: string);
+    procedure SetTitleAlignment(const Value: TTextAlignH);
+    procedure SetSubtitleAlignment(const Value: TTextAlignH);
     procedure SetSource(const Value: string);
     procedure SetLogoFilePath(const Value: string);
     procedure SetCategories(const Value: TArray<string>);
@@ -192,10 +196,14 @@ type
 
     /// <summary>The chart kind.</summary>
     property Kind: TChartKind read FKind write SetKind;
-    /// <summary>The chart title, drawn bold at the top left.</summary>
+    /// <summary>The chart title, drawn bold at the top.</summary>
     property Title: string read FTitle write SetTitle;
     /// <summary>The chart subtitle, drawn below the title.</summary>
     property Subtitle: string read FSubtitle write SetSubtitle;
+    /// <summary>Where the title lines sit between the outer margins. Default <c>Left</c>.</summary>
+    property TitleAlignment: TTextAlignH read FTitleAlignment write SetTitleAlignment;
+    /// <summary>Where the subtitle lines sit between the outer margins. Default <c>Left</c>.</summary>
+    property SubtitleAlignment: TTextAlignH read FSubtitleAlignment write SetSubtitleAlignment;
     /// <summary>The footer source text, e.g. 'Source: Eurostat'.</summary>
     property Source: string read FSource write SetSource;
     /// <summary>The optional footer logo file path (PNG).</summary>
@@ -352,6 +360,8 @@ begin
   FYAxis := TAxisOptions.Default;
   FOrientation := TChartOrientation.Vertical;
   FStackMode := TStackMode.Values;
+  FTitleAlignment := TTextAlignH.Left;
+  FSubtitleAlignment := TTextAlignH.Left;
   FLegendPosition := TLegendPosition.Top;
   FLegendLabels := TLegendLabelMode.Name;
   FLegendLabelDecimals := AutomaticDecimals;
@@ -597,6 +607,18 @@ end;
 procedure TChartPlot.SetSubtitle(const Value: string);
 begin
   FSubtitle := Value;
+  NotifyChanged;
+end;
+
+procedure TChartPlot.SetTitleAlignment(const Value: TTextAlignH);
+begin
+  FTitleAlignment := Value;
+  NotifyChanged;
+end;
+
+procedure TChartPlot.SetSubtitleAlignment(const Value: TTextAlignH);
+begin
+  FSubtitleAlignment := Value;
   NotifyChanged;
 end;
 

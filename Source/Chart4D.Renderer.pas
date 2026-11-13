@@ -1045,7 +1045,8 @@ type
     function DrawTitle(const X, Y, MaxWidth: Single): Single;
     function DrawSubtitle(const X, Y, MaxWidth: Single): Single;
     function DrawWrappedTextBlock(const X, Y, MaxWidth: Single; const Text: string;
-                                  const TextStyle: TChartTextStyle): Single;
+                                  const TextStyle: TChartTextStyle; const Alignment: TTextAlignH): Single;
+    function AnchorX(const Left, Width: Single; const Alignment: TTextAlignH): Single;
     function WrapTextLines(const Text: string; const TextStyle: TChartTextStyle;
                            const MaxWidth: Single): TArray<string>;
     function ComputeFooterHeight: Single;
@@ -3943,31 +3944,43 @@ end;
 function TChartRenderJob.DrawTitle(const X, Y, MaxWidth: Single): Single;
 begin
   const TextStyle = TChartTextStyle.Create(FStyle.FontName, FStyle.TitleFontSize, True, FStyle.TitleColor);
-  Result := DrawWrappedTextBlock(X, Y, MaxWidth, FPlot.Title, TextStyle);
+  Result := DrawWrappedTextBlock(X, Y, MaxWidth, FPlot.Title, TextStyle, FPlot.TitleAlignment);
 end;
 
 function TChartRenderJob.DrawSubtitle(const X, Y, MaxWidth: Single): Single;
 begin
   const Margin = 9 * FStyle.ScaleFactor;
   const TextStyle = TChartTextStyle.Create(FStyle.FontName, FStyle.SubtitleFontSize, False, FStyle.TextColor);
-  const TextTop = DrawWrappedTextBlock(X, Y + Margin, MaxWidth, FPlot.Subtitle, TextStyle);
+  const TextTop = DrawWrappedTextBlock(X, Y + Margin, MaxWidth, FPlot.Subtitle, TextStyle, FPlot.SubtitleAlignment);
   Result := TextTop + Margin;
 end;
 
 function TChartRenderJob.DrawWrappedTextBlock(const X, Y, MaxWidth: Single; const Text: string;
-                                              const TextStyle: TChartTextStyle): Single;
+                                              const TextStyle: TChartTextStyle; const Alignment: TTextAlignH): Single;
 begin
   const Lines = WrapTextLines(Text, TextStyle, MaxWidth);
   const LineHeight = FCanvas.MeasureText(LineHeightSampleText, TextStyle).Height;
+  const LineX = AnchorX(X, MaxWidth, Alignment);
 
   var LineTop := Y;
   for var Line in Lines do
   begin
-    FCanvas.DrawText(X, LineTop, Line, TextStyle, TTextAlignH.Left, TTextAlignV.Top);
+    FCanvas.DrawText(LineX, LineTop, Line, TextStyle, Alignment, TTextAlignV.Top);
     LineTop := LineTop + LineHeight;
   end;
 
   Result := LineTop;
+end;
+
+function TChartRenderJob.AnchorX(const Left, Width: Single; const Alignment: TTextAlignH): Single;
+begin
+  case Alignment of
+    TTextAlignH.Left   : Result := Left;
+    TTextAlignH.Center : Result := Left + Width / 2;
+    TTextAlignH.Right  : Result := Left + Width;
+  else
+    raise ENotSupportedException.CreateFmt('Unsupported text alignment: %d', [Ord(Alignment)]);
+  end;
 end;
 
 function TChartRenderJob.WrapTextLines(const Text: string; const TextStyle: TChartTextStyle;

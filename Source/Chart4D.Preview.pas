@@ -75,6 +75,8 @@ begin
   Preview.Kind := Settings.Kind;
   Preview.Title := Settings.Title;
   Preview.Subtitle := Settings.Subtitle;
+  Preview.TitleAlignment := Settings.TitleAlignment;
+  Preview.SubtitleAlignment := Settings.SubtitleAlignment;
   Preview.Source := Settings.Source;
 
   Preview.Style := Settings.Style;
