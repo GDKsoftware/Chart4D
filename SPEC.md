@@ -240,6 +240,14 @@ resourcestring
 
 ```pascal
 type
+  TChartPadding = record
+    Left: Single;
+    Top: Single;
+    Right: Single;
+    Bottom: Single;
+    class function Uniform(const Value: Single): TChartPadding; static;
+  end;
+
   TChartStyle = record
     FontName: string;
     TitleFontSize: Single;      // 28
@@ -260,6 +268,7 @@ type
     BaselineWidth: Single;      // 2
     SeriesLineWidth: Single;    // 3
     ScaleFactor: Single;        // 1.0
+    Padding: TChartPadding;     // 16 on every side, see 4.8
     ScatterPointRadius: Single;      // 4, see 4.19
     MinBubbleRadius: Single;         // 4, see 4.19
     MaxBubbleRadius: Single;         // 24, see 4.19
@@ -581,8 +590,9 @@ type
   end;
 ```
 
-Layout (top to bottom; all sizes scaled by `Style.ScaleFactor`; outer margin 16 on all
-sides):
+Layout (top to bottom; all sizes scaled by `Style.ScaleFactor`; the outer margin on each
+side is that side of `Style.Padding`, 16 by default, and 0 lets the content run up to the
+edge):
 
 1. Background fill.
 2. Title (bold, at the left outer margin, or centred or at the right outer margin as

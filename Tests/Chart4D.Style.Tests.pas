@@ -72,6 +72,9 @@ type
     procedure Default_ScaleFactor_IsOne;
 
     [Test]
+    procedure Default_Padding_IsSixteenOnEverySide;
+
+    [Test]
     procedure Default_ScatterAndBubbleRadii_MatchEditorialStyle;
 
     [Test]
@@ -215,6 +218,14 @@ end;
 procedure TChartStyleDefaultTests.Default_ScaleFactor_IsOne;
 begin
   Assert.AreEqual<Single>(1.0, FStyle.ScaleFactor);
+end;
+
+procedure TChartStyleDefaultTests.Default_Padding_IsSixteenOnEverySide;
+begin
+  Assert.AreEqual<Single>(16, FStyle.Padding.Left);
+  Assert.AreEqual<Single>(16, FStyle.Padding.Top);
+  Assert.AreEqual<Single>(16, FStyle.Padding.Right);
+  Assert.AreEqual<Single>(16, FStyle.Padding.Bottom);
 end;
 
 procedure TChartStyleDefaultTests.Default_ScatterAndBubbleRadii_MatchEditorialStyle;

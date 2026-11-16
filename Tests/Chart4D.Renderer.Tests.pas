@@ -207,6 +207,14 @@ type
                                                                           const TitleX, SubtitleX: Single);
 
     [Test]
+    [TestCase('Default', '16,16,16,16,1')]
+    [TestCase('Each side its own', '40,30,50,20,1')]
+    [TestCase('No padding', '0,0,0,0,1')]
+    [TestCase('Scaled', '10,12,14,8,2')]
+    procedure Render_Padding_KeepsTitleAndFooterThatFarFromEachEdge(const Left, Top, Right, Bottom: Single;
+                                                                    const ScaleFactor: Single);
+
+    [Test]
     procedure Render_LongTitle_WrapsOntoTwoLines;
 
     [Test]
@@ -1847,6 +1855,64 @@ begin
 
     Assert.AreEqual(1, TitleCalls, 'title drawn once');
     Assert.AreEqual(1, SubtitleCalls, 'subtitle drawn once');
+  finally
+    Plot.Free;
+  end;
+end;
+
+procedure TChartRendererTests.Render_Padding_KeepsTitleAndFooterThatFarFromEachEdge(
+  const Left, Top, Right, Bottom: Single; const ScaleFactor: Single);
+begin
+  const Plot = TChartPlot.Create;
+  try
+    Plot.Title := 'Short title';
+    Plot.Source := 'Source: somewhere';
+    Plot.Categories := ['A', 'B'];
+    Plot.AddSeries('Only', [1, 2]);
+
+    var Style := Plot.Style;
+    Style.Padding.Left   := Left;
+    Style.Padding.Top    := Top;
+    Style.Padding.Right  := Right;
+    Style.Padding.Bottom := Bottom;
+    Style.ScaleFactor    := ScaleFactor;
+    Plot.Style := Style;
+
+    TChartRenderer.Render(Plot, FCanvas, 640, 450);
+
+    var SeparatorY: Single := -1;
+    for var Call in FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawLine) do
+    begin
+      const IsFooterSeparator = ((Call.Color = ChartTextDark) and (Call.Y1 = Call.Y2));
+      if IsFooterSeparator then
+      begin
+        SeparatorY := Call.Y1;
+        Assert.AreEqual(Left * ScaleFactor, Call.X1, 0.01, 'separator starts at the left padding');
+        Assert.AreEqual(640 - Right * ScaleFactor, Call.X2, 0.01, 'separator ends at the right padding');
+      end;
+    end;
+    Assert.IsTrue(SeparatorY >= 0, 'the footer separator is drawn');
+
+    var TextCalls := 0;
+    for var Call in FRecordingCanvas.CallsOfKind(TCanvasCallKind.DrawText) do
+    begin
+      const IsTitle = (Call.Text = Plot.Title);
+      const IsSource = (Call.Text = Plot.Source);
+      if IsTitle then
+      begin
+        Inc(TextCalls);
+        Assert.AreEqual(Left * ScaleFactor, Call.TextX, 0.01, 'title starts at the left padding');
+        Assert.AreEqual(Top * ScaleFactor, Call.TextY, 0.01, 'title starts at the top padding');
+      end
+      else if IsSource then
+      begin
+        Inc(TextCalls);
+        const FooterBottom = SeparatorY + 2 * (Call.TextY - SeparatorY);
+        Assert.AreEqual(Left * ScaleFactor, Call.TextX, 0.01, 'source starts at the left padding');
+        Assert.AreEqual(450 - Bottom * ScaleFactor, FooterBottom, 0.01, 'footer ends at the bottom padding');
+      end;
+    end;
+    Assert.AreEqual(2, TextCalls, 'title and source are each drawn once');
   finally
     Plot.Free;
   end;

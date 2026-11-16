@@ -420,6 +420,16 @@ Plot.TitleAlignment := TTextAlignH.Center;  // Left, Center, Right
 Plot.SubtitleAlignment := TTextAlignH.Right;
 ```
 
+The chart keeps 16 pixels free along every edge. `Style.Padding` sets that room per side,
+and 0 lets the chart run up to the edge, which helps when several charts sit side by side:
+
+```pascal
+var Style := Plot.Style;
+Style.Padding := TChartPadding.Uniform(4);  // all four sides
+Style.Padding.Bottom := 0;                  // or one side on its own
+Plot.Style := Style;
+```
+
 The palette:
 
 ```pascal
