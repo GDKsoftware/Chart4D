@@ -8,15 +8,12 @@ Chart4D draws charts the way a newsroom publishes them: a bold left-aligned titl
 horizontal grid, no chart junk, direct labelling, and a footer with the source. One consistent
 style out of the box, every part of it overridable.
 
-Zero dependencies, RTL only in the core, in the style of the GDK 4D library family.
-
 <!-- badges -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Latest version](https://img.shields.io/github/v/tag/GDKsoftware/Chart4D?label=version&color=blue)](https://github.com/GDKsoftware/Chart4D/tags)
 [![Delphi 12+](https://img.shields.io/badge/Delphi-12%2B-e62329.svg)](https://www.embarcadero.com/products/delphi)
 [![Tests: DUnitX](https://img.shields.io/badge/tests-DUnitX-1f6feb.svg)](Tests)
 ![VCL and FMX](https://img.shields.io/badge/frameworks-VCL%20%7C%20FMX-1f6feb.svg)
-![Zero dependencies](https://img.shields.io/badge/dependencies-none-1f6feb.svg)
 
 <p align="center">
   <img src="docs/images/multi-line.png" alt="Life expectancy in three countries, as a multi-line chart" width="49%">
